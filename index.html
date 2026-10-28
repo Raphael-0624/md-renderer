@@ -1,0 +1,3024 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>✦ MD Renderer — Markdown 渲染器</title>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Georgia&family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Fira+Code:wght@400;500&family=Source+Code+Pro&family=Lora:ital,wght@0,400;0,600;1,400&family=Nunito:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Space+Mono&family=IBM+Plex+Mono&family=Noto+Serif+SC:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+<!-- Marked.js -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- highlight.js -->
+<link rel="stylesheet" id="hljs-theme" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
+<!-- html2canvas -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<!-- jsPDF -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+<style>
+/* ══════════════════════════════════════════════════════
+   MD RENDERER — GLOBAL STYLES
+══════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --app-bg: #0f1117;
+  --topbar-bg: #16181f;
+  --topbar-border: #2a2d3a;
+  --panel-bg: #1a1d27;
+  --panel-border: #252838;
+  --editor-bg: #13151e;
+  --editor-text: #c9d1d9;
+  --preview-bg: #0f1117;
+  --text-primary: #e8eaf6;
+  --text-secondary: #8892b0;
+  --text-muted: #4a5568;
+  --accent: #6c63ff;
+  --accent-hover: #7c73ff;
+  --btn-bg: #252838;
+  --btn-hover: #2e3250;
+  --scrollbar: #2a2d3a;
+  --scrollbar-thumb: #3d4166;
+  --radius: 8px;
+  --radius-sm: 5px;
+  --topbar-h: 52px;
+  --toolbar-h: 44px;
+  --theme-panel-w: 260px;
+}
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background: var(--app-bg);
+  color: var(--text-primary);
+  font-family: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #5a5f8a; }
+
+/* ══════════════════════════════════════════════════════
+   TOP BAR
+══════════════════════════════════════════════════════ */
+.topbar {
+  height: var(--topbar-h);
+  background: var(--topbar-bg);
+  border-bottom: 1px solid var(--topbar-border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 200;
+}
+.topbar-left { display: flex; align-items: center; gap: 10px; min-width: 160px; }
+.topbar-center { flex: 1; display: flex; justify-content: center; }
+.topbar-right { display: flex; align-items: center; gap: 8px; min-width: 160px; justify-content: flex-end; }
+
+.logo {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.stats-bar {
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.stats-bar .sep { color: var(--text-muted); }
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  transition: all .15s;
+}
+.icon-btn:hover { background: var(--btn-hover); color: var(--text-primary); }
+
+.export-group { display: flex; gap: 6px; }
+.btn-export {
+  background: var(--btn-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn-export:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ══════════════════════════════════════════════════════
+   APP LAYOUT
+══════════════════════════════════════════════════════ */
+.app-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ══════════════════════════════════════════════════════
+   THEME PANEL
+══════════════════════════════════════════════════════ */
+.theme-panel {
+  width: var(--theme-panel-w);
+  background: var(--panel-bg);
+  border-right: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width .25s ease, opacity .25s ease;
+  overflow: hidden;
+}
+.theme-panel.collapsed {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+.panel-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all .15s;
+}
+.panel-close:hover { background: var(--btn-hover); color: var(--text-primary); }
+
+.panel-search {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+.panel-search input {
+  width: 100%;
+  background: var(--editor-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color .15s;
+}
+.panel-search input:focus { border-color: var(--accent); }
+.panel-search input::placeholder { color: var(--text-muted); }
+
+.theme-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.theme-category-group { margin-bottom: 4px; }
+.theme-cat-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 8px 14px 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.theme-cat-label span { font-size: 13px; }
+
+.theme-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background .12s;
+  border-left: 3px solid transparent;
+}
+.theme-item:hover { background: rgba(108,99,255,.08); }
+.theme-item.active {
+  background: rgba(108,99,255,.15);
+  border-left-color: var(--accent);
+}
+
+/* 主题迷你预览卡 */
+.theme-preview-card {
+  width: 44px;
+  height: 30px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.08);
+  display: flex;
+  flex-direction: column;
+  padding: 3px 4px;
+  gap: 2px;
+}
+.tpc-line {
+  border-radius: 2px;
+  height: 3px;
+}
+.tpc-line.title { width: 70%; }
+.tpc-line.body { width: 100%; opacity: .6; }
+.tpc-line.body2 { width: 80%; opacity: .4; }
+.tpc-line.code { width: 60%; opacity: .7; border-radius: 1px; }
+
+.theme-item-info { flex: 1; min-width: 0; }
+.theme-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.theme-item-tag {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* ══════════════════════════════════════════════════════
+   EDITOR PANEL
+══════════════════════════════════════════════════════ */
+.editor-panel {
+  width: 380px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--panel-border);
+  background: var(--editor-bg);
+}
+
+.panel-toolbar {
+  height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  overflow-x: auto;
+}
+.panel-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.small-btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.small-btn:hover { background: var(--btn-hover); color: var(--text-primary); }
+
+#editor {
+  flex: 1;
+  background: var(--editor-bg);
+  color: var(--editor-text);
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 20px;
+  tab-size: 2;
+}
+#editor::placeholder { color: var(--text-muted); }
+
+/* ══════════════════════════════════════════════════════
+   PREVIEW PANEL
+══════════════════════════════════════════════════════ */
+.preview-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--preview-bg);
+}
+
+.preview-panel .panel-toolbar {
+  height: auto;
+  min-height: var(--toolbar-h);
+  padding: 6px 12px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ctrl-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ctrl-val {
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 30px;
+}
+
+.slider {
+  -webkit-appearance: none;
+  width: 70px;
+  height: 4px;
+  background: var(--panel-border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.ctrl-select {
+  background: var(--btn-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  max-width: 110px;
+}
+.ctrl-select:focus { border-color: var(--accent); }
+
+.preview-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.preview-content {
+  width: 800px;
+  max-width: 100%;
+  min-height: 100%;
+  transition: width .2s;
+}
+
+#preview {
+  min-height: 100%;
+}
+
+/* ══════════════════════════════════════════════════════
+   MARKDOWN BODY BASE STYLES
+══════════════════════════════════════════════════════ */
+.markdown-body {
+  font-size: 16px;
+  line-height: 1.7;
+  word-wrap: break-word;
+}
+.markdown-body > *:first-child { margin-top: 0 !important; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin-top: 1.5em;
+  margin-bottom: .5em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.markdown-body h1 { font-size: 2em; }
+.markdown-body h2 { font-size: 1.5em; }
+.markdown-body h3 { font-size: 1.25em; }
+.markdown-body h4 { font-size: 1em; }
+.markdown-body h5 { font-size: .875em; }
+.markdown-body h6 { font-size: .85em; }
+.markdown-body p { margin-top: 0; margin-bottom: 1em; }
+.markdown-body a { text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body strong { font-weight: 600; }
+.markdown-body em { font-style: italic; }
+.markdown-body del { text-decoration: line-through; }
+.markdown-body ul, .markdown-body ol { padding-left: 2em; margin-bottom: 1em; }
+.markdown-body li { margin-bottom: .25em; }
+.markdown-body li input[type="checkbox"] { margin-right: .5em; }
+.markdown-body blockquote {
+  margin: 1em 0;
+  padding: .5em 1em;
+  border-left: 4px solid #ddd;
+}
+.markdown-body blockquote > :last-child { margin-bottom: 0; }
+.markdown-body code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: .875em;
+  padding: .2em .4em;
+  border-radius: 3px;
+}
+.markdown-body pre {
+  padding: 1em;
+  overflow: auto;
+  border-radius: 6px;
+  margin-bottom: 1em;
+}
+.markdown-body pre code {
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-size: .875em;
+}
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1em;
+  overflow: auto;
+}
+.markdown-body th, .markdown-body td {
+  padding: .5em 1em;
+  border: 1px solid #ddd;
+  text-align: left;
+}
+.markdown-body th { font-weight: 600; }
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 1.5em 0;
+}
+.markdown-body img { max-width: 100%; }
+
+/* ══════════════════════════════════════════════════════
+   FULLSCREEN
+══════════════════════════════════════════════════════ */
+.fullscreen-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #fff;
+  flex-direction: column;
+}
+.fullscreen-overlay.active { display: flex; }
+
+.fs-toolbar {
+  padding: 12px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+  background: #fff;
+}
+.fs-close {
+  background: #f3f4f6;
+  border: none;
+  color: #374151;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.fs-close:hover { background: #e5e7eb; }
+
+.fs-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+.fs-content {
+  width: 800px;
+  max-width: 100%;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  text-rendering: geometricPrecision;
+}
+
+@media print {
+  html, body {
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+
+  .fullscreen-overlay {
+    display: flex !important;
+    position: static;
+    inset: auto;
+    background: #fff;
+  }
+
+  .fs-toolbar {
+    display: none !important;
+  }
+
+  .fs-scroll {
+    overflow: visible;
+    display: block;
+    padding: 0;
+  }
+
+  .fs-content {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    text-rendering: geometricPrecision;
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════════════ */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #1e2235;
+  color: #e8eaf6;
+  font-size: 13px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: 1px solid #3d4166;
+  opacity: 0;
+  transition: all .25s;
+  pointer-events: none;
+  z-index: 9999;
+}
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ══════════════════════════════════════════════════════
+   LOADING OVERLAY
+══════════════════════════════════════════════════════ */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15,17,23,.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  color: var(--text-primary);
+  font-size: 14px;
+  gap: 12px;
+}
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--panel-border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     TOP BAR
+══════════════════════════════════════ -->
+<header class="topbar">
+  <div class="topbar-left">
+    <button class="icon-btn" id="toggleThemePanel" title="主题面板">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+    </button>
+    <div class="logo">✦ MD Renderer</div>
+  </div>
+  <div class="topbar-center">
+    <div class="stats-bar">
+      <span id="wordCount">0 字</span>
+      <span class="sep">·</span>
+      <span id="charCount">0 字符</span>
+      <span class="sep">·</span>
+      <span id="readTime">0 分钟阅读</span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <button class="icon-btn" id="toggleFullscreen" title="全屏预览">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+    </button>
+    <div class="export-group">
+      <button class="btn-export" id="exportImg">📷 长图</button>
+      <button class="btn-export" id="exportPdf">📄 PDF</button>
+      <button class="btn-export" id="copyHtml">📋 HTML</button>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════
+     MAIN LAYOUT
+══════════════════════════════════════ -->
+<div class="app-layout" id="appLayout">
+
+  <!-- ── THEME PANEL ── -->
+  <aside class="theme-panel" id="themePanel">
+    <div class="panel-header">
+      <span>🎨 主题</span>
+      <button class="panel-close" id="closeThemePanel">✕</button>
+    </div>
+    <div class="panel-search">
+      <input type="text" id="themeSearch" placeholder="搜索主题…" />
+    </div>
+    <div class="theme-list" id="themeList">
+      <!-- 由 JS 生成 -->
+    </div>
+  </aside>
+
+  <!-- ── EDITOR PANEL ── -->
+  <div class="editor-panel">
+    <div class="panel-toolbar">
+      <span class="panel-label">✏️ 输入</span>
+      <button class="small-btn" id="clearEditor">清空</button>
+      <button class="small-btn" id="loadDemo">示例</button>
+    </div>
+    <textarea id="editor" placeholder="在此粘贴 Markdown 文本，或点击「示例」查看效果…" spellcheck="false"></textarea>
+  </div>
+
+  <!-- ── PREVIEW PANEL ── -->
+  <div class="preview-panel">
+    <div class="panel-toolbar">
+      <span class="panel-label">👁 预览</span>
+      <div class="toolbar-controls">
+        <label class="ctrl-label">字号</label>
+        <input type="range" id="fontSize" min="12" max="24" value="16" class="slider">
+        <span id="fontSizeVal" class="ctrl-val">16px</span>
+
+        <label class="ctrl-label">行高</label>
+        <input type="range" id="lineHeight" min="14" max="22" value="17" step="1" class="slider">
+        <span id="lineHeightVal" class="ctrl-val">1.7</span>
+
+        <label class="ctrl-label">宽度</label>
+        <select id="contentWidth" class="ctrl-select">
+          <option value="600px">窄</option>
+          <option value="800px" selected>中</option>
+          <option value="1000px">宽</option>
+          <option value="100%">全宽</option>
+        </select>
+
+        <label class="ctrl-label">中文</label>
+        <select id="cnFont" class="ctrl-select">
+          <option value="'Noto Sans SC', sans-serif">思源黑体</option>
+          <option value="'Noto Serif SC', serif">思源宋体</option>
+          <option value="'LXGW WenKai', cursive">霞鹜文楷</option>
+          <option value="'KaiTi', cursive">楷体</option>
+          <option value="'SimSun', serif">宋体</option>
+          <option value="'Microsoft YaHei', sans-serif">微软雅黑</option>
+          <option value="'FangSong', serif">仿宋</option>
+          <option value="system-ui, sans-serif">系统默认</option>
+        </select>
+
+        <label class="ctrl-label">英文</label>
+        <select id="enFont" class="ctrl-select">
+          <option value="'Inter', sans-serif">Inter</option>
+          <option value="'DM Sans', sans-serif">DM Sans</option>
+          <option value="'Nunito', sans-serif">Nunito</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="'Merriweather', serif">Merriweather</option>
+          <option value="'Lora', serif">Lora</option>
+          <option value="'Playfair Display', serif">Playfair Display</option>
+          <option value="'Crimson Text', serif">Crimson Text</option>
+          <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+          <option value="'Fira Code', monospace">Fira Code</option>
+          <option value="'Space Mono', monospace">Space Mono</option>
+        </select>
+
+        <label class="ctrl-label">代码</label>
+        <select id="codeTheme" class="ctrl-select">
+          <option value="github">GitHub</option>
+          <option value="github-dark">GitHub Dark</option>
+          <option value="monokai">Monokai</option>
+          <option value="dracula">Dracula</option>
+          <option value="nord">Nord</option>
+          <option value="atom-one-dark">Atom One Dark</option>
+          <option value="solarized-light">Solarized Light</option>
+          <option value="solarized-dark">Solarized Dark</option>
+          <option value="vs">VS</option>
+          <option value="tokyo-night-dark">Tokyo Night</option>
+        </select>
+      </div>
+    </div>
+    <div class="preview-scroll" id="previewScroll">
+      <div class="preview-content">
+        <div class="markdown-body" id="preview"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /app-layout -->
+
+<!-- ── FULLSCREEN OVERLAY ── -->
+<div class="fullscreen-overlay" id="fullscreenOverlay">
+  <div class="fs-toolbar">
+    <button class="fs-close" id="closeFullscreen">✕ 退出全屏</button>
+  </div>
+  <div class="fs-scroll">
+    <div class="fs-content markdown-body" id="fsContent"></div>
+  </div>
+</div>
+
+<!-- ── TOAST ── -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   THEMES DEFINITION (112 themes)
+══════════════════════════════════════════════════════ */
+const THEMES = [
+
+/* ── ⭐ 经典系 (12) ── */
+{
+  id: 'github-light', name: 'GitHub Light', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#ffffff', title:'#24292e', body:'#24292e', code:'#f6f8fa' },
+  css: `.markdown-body { background:#ffffff; color:#24292e; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #eaecef; padding-bottom:.3em; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#24292e; }
+    .markdown-body a { color:#0366d6; }
+    .markdown-body blockquote { border-left:4px solid #dfe2e5; color:#6a737d; background:#f6f8fa; }
+    .markdown-body code { background:#f6f8fa; color:#e36209; }
+    .markdown-body pre { background:#f6f8fa; border:1px solid #e1e4e8; }
+    .markdown-body th { background:#f6f8fa; }
+    .markdown-body td,.markdown-body th { border:1px solid #dfe2e5; }
+    .markdown-body tr:nth-child(even) td { background:#f6f8fa; }
+    .markdown-body hr { border-top:2px solid #eaecef; }`
+},
+{
+  id: 'github-dark', name: 'GitHub Dark', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#0d1117', title:'#c9d1d9', body:'#8b949e', code:'#161b22' },
+  css: `.markdown-body { background:#0d1117; color:#c9d1d9; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #21262d; padding-bottom:.3em; color:#e6edf3; }
+    .markdown-body h3,.markdown-body h4,.markdown-body h5,.markdown-body h6 { color:#e6edf3; }
+    .markdown-body a { color:#58a6ff; }
+    .markdown-body blockquote { border-left:4px solid #3b434b; color:#8b949e; background:#161b22; }
+    .markdown-body code { background:#161b22; color:#ff7b72; border:1px solid #30363d; }
+    .markdown-body pre { background:#161b22; border:1px solid #30363d; }
+    .markdown-body th { background:#161b22; color:#e6edf3; border:1px solid #30363d; }
+    .markdown-body td { border:1px solid #30363d; }
+    .markdown-body tr:nth-child(even) td { background:#161b22; }
+    .markdown-body hr { border-top:1px solid #21262d; }
+    .markdown-body strong { color:#e6edf3; }`
+},
+{
+  id: 'github-dimmed', name: 'GitHub Dimmed', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#22272e', title:'#adbac7', body:'#768390', code:'#2d333b' },
+  css: `.markdown-body { background:#22272e; color:#adbac7; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #373e47; padding-bottom:.3em; color:#cdd9e5; }
+    .markdown-body h3,.markdown-body h4 { color:#cdd9e5; }
+    .markdown-body a { color:#539bf5; }
+    .markdown-body blockquote { border-left:4px solid #444c56; color:#768390; background:#2d333b; }
+    .markdown-body code { background:#2d333b; color:#f47067; border:1px solid #444c56; }
+    .markdown-body pre { background:#2d333b; border:1px solid #444c56; }
+    .markdown-body th { background:#2d333b; color:#cdd9e5; border:1px solid #444c56; }
+    .markdown-body td { border:1px solid #444c56; }
+    .markdown-body tr:nth-child(even) td { background:#2d333b; }
+    .markdown-body hr { border-top:1px solid #373e47; }`
+},
+{
+  id: 'splendor', name: 'Splendor', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#fffff8', title:'#333', body:'#444', code:'#f5f5f0' },
+  css: `.markdown-body { background:#fffff8; color:#333; font-family:'Palatino Linotype',Palatino,Georgia,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2.2em; font-weight:700; color:#111; border:none; }
+    .markdown-body h2 { font-size:1.6em; color:#222; border:none; border-bottom:1px solid #ddd; }
+    .markdown-body a { color:#c0392b; }
+    .markdown-body blockquote { border-left:3px solid #c0392b; color:#666; background:transparent; font-style:italic; }
+    .markdown-body code { background:#f5f5f0; color:#c0392b; }
+    .markdown-body pre { background:#f5f5f0; border:none; border-left:3px solid #c0392b; }
+    .markdown-body th { background:#f5f5f0; border:1px solid #ddd; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:1px solid #ddd; }`
+},
+{
+  id: 'air', name: 'Air', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#ffffff', title:'#444', body:'#666', code:'#f9f9f9' },
+  css: `.markdown-body { background:#fff; color:#555; padding:48px 60px; line-height:1.8; }
+    .markdown-body h1 { font-size:2em; color:#333; border:none; font-weight:300; }
+    .markdown-body h2 { font-size:1.4em; color:#444; border:none; font-weight:400; }
+    .markdown-body a { color:#0d7680; }
+    .markdown-body blockquote { border-left:2px solid #0d7680; color:#888; background:transparent; font-style:italic; }
+    .markdown-body code { background:#f9f9f9; color:#0d7680; border:1px solid #eee; }
+    .markdown-body pre { background:#f9f9f9; border:1px solid #eee; }
+    .markdown-body th { background:#f9f9f9; border:1px solid #eee; }
+    .markdown-body td { border:1px solid #eee; }
+    .markdown-body hr { border-top:1px solid #eee; }`
+},
+{
+  id: 'modest', name: 'Modest', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#ffffff', title:'#222', body:'#444', code:'#f4f4f4' },
+  css: `.markdown-body { background:#fff; color:#444; padding:40px 48px; }
+    .markdown-body h1 { font-size:1.8em; color:#222; border-bottom:2px solid #222; padding-bottom:.2em; }
+    .markdown-body h2 { font-size:1.4em; color:#333; border-bottom:1px solid #ddd; }
+    .markdown-body a { color:#4183c4; }
+    .markdown-body blockquote { border-left:4px solid #4183c4; color:#666; background:#f8f8f8; }
+    .markdown-body code { background:#f4f4f4; color:#c7254e; border:1px solid #e1e1e8; }
+    .markdown-body pre { background:#f4f4f4; border:1px solid #e1e1e8; }
+    .markdown-body th { background:#f4f4f4; border:1px solid #ddd; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:2px solid #ddd; }`
+},
+{
+  id: 'swiss', name: 'Swiss', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#ffffff', title:'#000', body:'#333', code:'#f0f0f0' },
+  css: `.markdown-body { background:#fff; color:#333; padding:48px 56px; }
+    .markdown-body h1 { font-size:2.4em; font-weight:900; color:#000; border:none; letter-spacing:-1px; text-transform:uppercase; }
+    .markdown-body h2 { font-size:1.6em; font-weight:700; color:#000; border:none; border-left:6px solid #000; padding-left:12px; }
+    .markdown-body h3 { font-size:1.1em; font-weight:700; color:#000; text-transform:uppercase; letter-spacing:1px; }
+    .markdown-body a { color:#e00; text-decoration:underline; }
+    .markdown-body blockquote { border-left:6px solid #000; color:#555; background:transparent; }
+    .markdown-body code { background:#f0f0f0; color:#e00; border:1px solid #ddd; }
+    .markdown-body pre { background:#f0f0f0; border:2px solid #000; }
+    .markdown-body th { background:#000; color:#fff; border:1px solid #000; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:3px solid #000; }`
+},
+{
+  id: 'foghorn', name: 'Foghorn', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#f5f5f5', title:'#111', body:'#333', code:'#e8e8e8' },
+  css: `.markdown-body { background:#f5f5f5; color:#333; padding:40px 48px; }
+    .markdown-body h1 { font-size:3em; font-weight:900; color:#111; border:none; letter-spacing:-2px; line-height:1.1; }
+    .markdown-body h2 { font-size:2em; font-weight:900; color:#222; border:none; letter-spacing:-1px; }
+    .markdown-body a { color:#c00; }
+    .markdown-body blockquote { border-left:6px solid #c00; color:#555; background:#ebebeb; font-style:italic; }
+    .markdown-body code { background:#e8e8e8; color:#c00; }
+    .markdown-body pre { background:#e8e8e8; border:none; }
+    .markdown-body th { background:#111; color:#fff; border:1px solid #111; }
+    .markdown-body td { border:1px solid #ccc; }
+    .markdown-body hr { border-top:4px solid #111; }`
+},
+{
+  id: 'westwind', name: 'Westwind', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#faf8f5', title:'#2c2c2c', body:'#4a4a4a', code:'#f0ede8' },
+  css: `.markdown-body { background:#faf8f5; color:#4a4a4a; font-family:Georgia,'Times New Roman',serif; padding:44px 52px; }
+    .markdown-body h1 { font-size:2em; color:#2c2c2c; border-bottom:2px solid #c8b89a; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#3a3a3a; border-bottom:1px solid #ddd3c4; }
+    .markdown-body a { color:#8b5e3c; }
+    .markdown-body blockquote { border-left:4px solid #c8b89a; color:#6a6a6a; background:#f5f0e8; }
+    .markdown-body code { background:#f0ede8; color:#8b5e3c; }
+    .markdown-body pre { background:#f0ede8; border:1px solid #ddd3c4; }
+    .markdown-body th { background:#f0ede8; border:1px solid #ddd3c4; }
+    .markdown-body td { border:1px solid #ddd3c4; }
+    .markdown-body hr { border-top:1px solid #c8b89a; }`
+},
+{
+  id: 'hipster', name: 'Hipster', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#fdf6e3', title:'#333', body:'#555', code:'#eee8d5' },
+  css: `.markdown-body { background:#fdf6e3; color:#555; font-family:'Courier New',monospace; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#333; border:none; border-bottom:3px double #999; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#444; border:none; }
+    .markdown-body a { color:#cb4b16; }
+    .markdown-body blockquote { border-left:4px solid #cb4b16; color:#777; background:#eee8d5; }
+    .markdown-body code { background:#eee8d5; color:#cb4b16; }
+    .markdown-body pre { background:#eee8d5; border:1px solid #d3c9b0; }
+    .markdown-body th { background:#eee8d5; border:1px solid #d3c9b0; }
+    .markdown-body td { border:1px solid #d3c9b0; }
+    .markdown-body hr { border-top:3px double #999; }`
+},
+{
+  id: 'notion-style', name: 'Notion Style', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#ffffff', title:'#37352f', body:'#37352f', code:'#f7f6f3' },
+  css: `.markdown-body { background:#fff; color:#37352f; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:1.875em; font-weight:700; color:#37352f; border:none; }
+    .markdown-body h2 { font-size:1.5em; font-weight:600; color:#37352f; border:none; }
+    .markdown-body h3 { font-size:1.25em; font-weight:600; color:#37352f; }
+    .markdown-body a { color:#0f7b6c; }
+    .markdown-body blockquote { border-left:3px solid #37352f; color:#6b6b6b; background:#f7f6f3; padding:.5em 1em; }
+    .markdown-body code { background:#f7f6f3; color:#eb5757; border-radius:3px; }
+    .markdown-body pre { background:#f7f6f3; border-radius:3px; }
+    .markdown-body th { background:#f7f6f3; border:1px solid #e9e9e7; }
+    .markdown-body td { border:1px solid #e9e9e7; }
+    .markdown-body hr { border-top:1px solid #e9e9e7; }`
+},
+{
+  id: 'medium-style', name: 'Medium Style', category: '⭐ 经典', tag: 'classic',
+  preview: { bg:'#ffffff', title:'#292929', body:'#292929', code:'#f2f2f2' },
+  css: `.markdown-body { background:#fff; color:#292929; font-family:'Georgia',serif; padding:40px 48px; max-width:740px; margin:0 auto; }
+    .markdown-body h1 { font-size:2.2em; font-weight:700; color:#292929; border:none; line-height:1.2; }
+    .markdown-body h2 { font-size:1.6em; font-weight:700; color:#292929; border:none; }
+    .markdown-body h3 { font-size:1.2em; font-weight:700; color:#292929; }
+    .markdown-body a { color:#1a8917; }
+    .markdown-body blockquote { border-left:3px solid #292929; color:#6b6b6b; background:transparent; font-style:italic; font-size:1.1em; }
+    .markdown-body code { background:#f2f2f2; color:#c7254e; }
+    .markdown-body pre { background:#f2f2f2; }
+    .markdown-body th { background:#f2f2f2; border:1px solid #ddd; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:1px solid #ddd; }`
+},
+
+/* ── 🌑 暗黑系 (12) ── */
+{
+  id: 'dracula', name: 'Dracula', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#282a36', title:'#f8f8f2', body:'#ccc', code:'#44475a' },
+  css: `.markdown-body { background:#282a36; color:#f8f8f2; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#bd93f9; border-color:#44475a; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #44475a; padding-bottom:.3em; }
+    .markdown-body a { color:#8be9fd; }
+    .markdown-body blockquote { border-left:4px solid #6272a4; color:#6272a4; background:#44475a; }
+    .markdown-body code { background:#44475a; color:#ff79c6; border:1px solid #6272a4; }
+    .markdown-body pre { background:#44475a; border:1px solid #6272a4; }
+    .markdown-body th { background:#44475a; color:#f8f8f2; border:1px solid #6272a4; }
+    .markdown-body td { border:1px solid #6272a4; }
+    .markdown-body tr:nth-child(even) td { background:#44475a; }
+    .markdown-body hr { border-top:1px solid #44475a; }
+    .markdown-body strong { color:#ffb86c; }`
+},
+{
+  id: 'nord', name: 'Nord', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#2e3440', title:'#eceff4', body:'#d8dee9', code:'#3b4252' },
+  css: `.markdown-body { background:#2e3440; color:#d8dee9; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#eceff4; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #3b4252; padding-bottom:.3em; }
+    .markdown-body a { color:#88c0d0; }
+    .markdown-body blockquote { border-left:4px solid #4c566a; color:#81a1c1; background:#3b4252; }
+    .markdown-body code { background:#3b4252; color:#bf616a; border:1px solid #4c566a; }
+    .markdown-body pre { background:#3b4252; border:1px solid #4c566a; }
+    .markdown-body th { background:#3b4252; color:#eceff4; border:1px solid #4c566a; }
+    .markdown-body td { border:1px solid #4c566a; }
+    .markdown-body tr:nth-child(even) td { background:#3b4252; }
+    .markdown-body hr { border-top:1px solid #3b4252; }
+    .markdown-body strong { color:#ebcb8b; }`
+},
+{
+  id: 'monokai', name: 'Monokai', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#272822', title:'#f8f8f2', body:'#ccc', code:'#3e3d32' },
+  css: `.markdown-body { background:#272822; color:#f8f8f2; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#a6e22e; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #3e3d32; padding-bottom:.3em; }
+    .markdown-body a { color:#66d9e8; }
+    .markdown-body blockquote { border-left:4px solid #75715e; color:#75715e; background:#3e3d32; }
+    .markdown-body code { background:#3e3d32; color:#f92672; border:1px solid #75715e; }
+    .markdown-body pre { background:#3e3d32; border:1px solid #75715e; }
+    .markdown-body th { background:#3e3d32; color:#f8f8f2; border:1px solid #75715e; }
+    .markdown-body td { border:1px solid #75715e; }
+    .markdown-body tr:nth-child(even) td { background:#3e3d32; }
+    .markdown-body hr { border-top:1px solid #3e3d32; }
+    .markdown-body strong { color:#fd971f; }`
+},
+{
+  id: 'one-dark', name: 'One Dark', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#282c34', title:'#abb2bf', body:'#abb2bf', code:'#21252b' },
+  css: `.markdown-body { background:#282c34; color:#abb2bf; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#e5c07b; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #3e4451; padding-bottom:.3em; }
+    .markdown-body a { color:#61afef; }
+    .markdown-body blockquote { border-left:4px solid #4b5263; color:#5c6370; background:#21252b; }
+    .markdown-body code { background:#21252b; color:#e06c75; border:1px solid #4b5263; }
+    .markdown-body pre { background:#21252b; border:1px solid #4b5263; }
+    .markdown-body th { background:#21252b; color:#abb2bf; border:1px solid #4b5263; }
+    .markdown-body td { border:1px solid #4b5263; }
+    .markdown-body tr:nth-child(even) td { background:#21252b; }
+    .markdown-body hr { border-top:1px solid #3e4451; }
+    .markdown-body strong { color:#98c379; }`
+},
+{
+  id: 'solarized-dark', name: 'Solarized Dark', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#002b36', title:'#839496', body:'#657b83', code:'#073642' },
+  css: `.markdown-body { background:#002b36; color:#839496; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#93a1a1; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #073642; padding-bottom:.3em; }
+    .markdown-body a { color:#268bd2; }
+    .markdown-body blockquote { border-left:4px solid #586e75; color:#586e75; background:#073642; }
+    .markdown-body code { background:#073642; color:#dc322f; border:1px solid #586e75; }
+    .markdown-body pre { background:#073642; border:1px solid #586e75; }
+    .markdown-body th { background:#073642; color:#93a1a1; border:1px solid #586e75; }
+    .markdown-body td { border:1px solid #586e75; }
+    .markdown-body tr:nth-child(even) td { background:#073642; }
+    .markdown-body hr { border-top:1px solid #073642; }
+    .markdown-body strong { color:#b58900; }`
+},
+{
+  id: 'blackout', name: 'Blackout', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#000000', title:'#ffffff', body:'#cccccc', code:'#111111' },
+  css: `.markdown-body { background:#000; color:#ccc; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#fff; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #333; padding-bottom:.3em; }
+    .markdown-body a { color:#4af; }
+    .markdown-body blockquote { border-left:4px solid #444; color:#888; background:#111; }
+    .markdown-body code { background:#111; color:#f80; border:1px solid #333; }
+    .markdown-body pre { background:#111; border:1px solid #333; }
+    .markdown-body th { background:#111; color:#fff; border:1px solid #333; }
+    .markdown-body td { border:1px solid #333; }
+    .markdown-body tr:nth-child(even) td { background:#111; }
+    .markdown-body hr { border-top:1px solid #333; }`
+},
+{
+  id: 'tokyo-night', name: 'Tokyo Night', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#1a1b26', title:'#c0caf5', body:'#a9b1d6', code:'#16161e' },
+  css: `.markdown-body { background:#1a1b26; color:#a9b1d6; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#c0caf5; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #292e42; padding-bottom:.3em; }
+    .markdown-body a { color:#7aa2f7; }
+    .markdown-body blockquote { border-left:4px solid #3b4261; color:#565f89; background:#16161e; }
+    .markdown-body code { background:#16161e; color:#f7768e; border:1px solid #3b4261; }
+    .markdown-body pre { background:#16161e; border:1px solid #3b4261; }
+    .markdown-body th { background:#16161e; color:#c0caf5; border:1px solid #3b4261; }
+    .markdown-body td { border:1px solid #3b4261; }
+    .markdown-body tr:nth-child(even) td { background:#16161e; }
+    .markdown-body hr { border-top:1px solid #292e42; }
+    .markdown-body strong { color:#e0af68; }`
+},
+{
+  id: 'catppuccin', name: 'Catppuccin', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#1e1e2e', title:'#cdd6f4', body:'#bac2de', code:'#181825' },
+  css: `.markdown-body { background:#1e1e2e; color:#cdd6f4; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#cba6f7; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #313244; padding-bottom:.3em; }
+    .markdown-body a { color:#89b4fa; }
+    .markdown-body blockquote { border-left:4px solid #45475a; color:#6c7086; background:#181825; }
+    .markdown-body code { background:#181825; color:#f38ba8; border:1px solid #45475a; }
+    .markdown-body pre { background:#181825; border:1px solid #45475a; }
+    .markdown-body th { background:#181825; color:#cdd6f4; border:1px solid #45475a; }
+    .markdown-body td { border:1px solid #45475a; }
+    .markdown-body tr:nth-child(even) td { background:#181825; }
+    .markdown-body hr { border-top:1px solid #313244; }
+    .markdown-body strong { color:#a6e3a1; }`
+},
+{
+  id: 'gruvbox-dark', name: 'Gruvbox Dark', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#282828', title:'#ebdbb2', body:'#d5c4a1', code:'#1d2021' },
+  css: `.markdown-body { background:#282828; color:#ebdbb2; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#fabd2f; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #3c3836; padding-bottom:.3em; }
+    .markdown-body a { color:#83a598; }
+    .markdown-body blockquote { border-left:4px solid #504945; color:#928374; background:#1d2021; }
+    .markdown-body code { background:#1d2021; color:#fb4934; border:1px solid #504945; }
+    .markdown-body pre { background:#1d2021; border:1px solid #504945; }
+    .markdown-body th { background:#1d2021; color:#ebdbb2; border:1px solid #504945; }
+    .markdown-body td { border:1px solid #504945; }
+    .markdown-body tr:nth-child(even) td { background:#1d2021; }
+    .markdown-body hr { border-top:1px solid #3c3836; }
+    .markdown-body strong { color:#b8bb26; }`
+},
+{
+  id: 'palenight', name: 'Palenight', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#292d3e', title:'#a6accd', body:'#8796b0', code:'#1b1e2b' },
+  css: `.markdown-body { background:#292d3e; color:#a6accd; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#c792ea; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #3a3f58; padding-bottom:.3em; }
+    .markdown-body a { color:#82aaff; }
+    .markdown-body blockquote { border-left:4px solid #444267; color:#676e95; background:#1b1e2b; }
+    .markdown-body code { background:#1b1e2b; color:#f07178; border:1px solid #444267; }
+    .markdown-body pre { background:#1b1e2b; border:1px solid #444267; }
+    .markdown-body th { background:#1b1e2b; color:#a6accd; border:1px solid #444267; }
+    .markdown-body td { border:1px solid #444267; }
+    .markdown-body tr:nth-child(even) td { background:#1b1e2b; }
+    .markdown-body hr { border-top:1px solid #3a3f58; }
+    .markdown-body strong { color:#c3e88d; }`
+},
+{
+  id: 'lofi-dark', name: 'Lofi Dark', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#1c1c1c', title:'#e0e0e0', body:'#aaa', code:'#2a2a2a' },
+  css: `.markdown-body { background:#1c1c1c; color:#aaa; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#e0e0e0; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #333; padding-bottom:.3em; }
+    .markdown-body a { color:#888; text-decoration:underline; }
+    .markdown-body blockquote { border-left:3px solid #444; color:#666; background:#2a2a2a; }
+    .markdown-body code { background:#2a2a2a; color:#ccc; border:1px solid #444; }
+    .markdown-body pre { background:#2a2a2a; border:1px solid #444; }
+    .markdown-body th { background:#2a2a2a; color:#e0e0e0; border:1px solid #444; }
+    .markdown-body td { border:1px solid #444; }
+    .markdown-body tr:nth-child(even) td { background:#2a2a2a; }
+    .markdown-body hr { border-top:1px solid #333; }`
+},
+{
+  id: 'dharkan', name: 'Dharkan', category: '🌑 暗黑', tag: 'dark',
+  preview: { bg:'#1c1b22', title:'#b8b8c0', body:'#8888a0', code:'#252430' },
+  css: `.markdown-body { background:#1c1b22; color:#b8b8c0; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#d0d0e0; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #2e2d3a; padding-bottom:.3em; }
+    .markdown-body a { color:#9090d0; }
+    .markdown-body blockquote { border-left:4px solid #3a3850; color:#6868a0; background:#252430; }
+    .markdown-body code { background:#252430; color:#c080c0; border:1px solid #3a3850; }
+    .markdown-body pre { background:#252430; border:1px solid #3a3850; }
+    .markdown-body th { background:#252430; color:#d0d0e0; border:1px solid #3a3850; }
+    .markdown-body td { border:1px solid #3a3850; }
+    .markdown-body tr:nth-child(even) td { background:#252430; }
+    .markdown-body hr { border-top:1px solid #2e2d3a; }`
+},
+
+/* ── ◻️ 极简系 (10) ── */
+{
+  id: 'pure-white', name: 'Pure White', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#ffffff', title:'#000', body:'#333', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#333; padding:48px 64px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#000; border:none; }
+    .markdown-body a { color:#000; text-decoration:underline; }
+    .markdown-body blockquote { border-left:2px solid #ccc; color:#666; background:transparent; }
+    .markdown-body code { background:#f5f5f5; color:#333; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #eee; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #eee; }
+    .markdown-body td { border:1px solid #eee; }
+    .markdown-body hr { border-top:1px solid #eee; }`
+},
+{
+  id: 'zen', name: 'Zen', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#fafafa', title:'#222', body:'#555', code:'#f0f0f0' },
+  css: `.markdown-body { background:#fafafa; color:#555; padding:60px 80px; max-width:680px; margin:0 auto; }
+    .markdown-body h1 { font-size:1.8em; color:#222; border:none; font-weight:400; }
+    .markdown-body h2 { font-size:1.3em; color:#333; border:none; font-weight:400; }
+    .markdown-body h3 { font-size:1.1em; color:#444; font-weight:500; }
+    .markdown-body a { color:#555; text-decoration:underline; }
+    .markdown-body blockquote { border-left:2px solid #ddd; color:#888; background:transparent; font-style:italic; }
+    .markdown-body code { background:#f0f0f0; color:#555; }
+    .markdown-body pre { background:#f0f0f0; border:none; }
+    .markdown-body th { background:#f0f0f0; border:1px solid #eee; }
+    .markdown-body td { border:1px solid #eee; }
+    .markdown-body hr { border-top:1px solid #eee; }`
+},
+{
+  id: 'linen', name: 'Linen', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#faf0e6', title:'#3d3d3d', body:'#5a5a5a', code:'#f0e6d3' },
+  css: `.markdown-body { background:#faf0e6; color:#5a5a5a; padding:48px 56px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#3d3d3d; border:none; }
+    .markdown-body a { color:#8b6914; }
+    .markdown-body blockquote { border-left:3px solid #c8a96e; color:#7a7a7a; background:#f5e8d0; }
+    .markdown-body code { background:#f0e6d3; color:#8b6914; }
+    .markdown-body pre { background:#f0e6d3; border:1px solid #e0d0b8; }
+    .markdown-body th { background:#f0e6d3; border:1px solid #e0d0b8; }
+    .markdown-body td { border:1px solid #e0d0b8; }
+    .markdown-body hr { border-top:1px solid #e0d0b8; }`
+},
+{
+  id: 'parchment', name: 'Parchment', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#f4ecd8', title:'#3b2f2f', body:'#5c4a3a', code:'#ede0c4' },
+  css: `.markdown-body { background:#f4ecd8; color:#5c4a3a; font-family:Georgia,serif; padding:48px 56px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#3b2f2f; border:none; }
+    .markdown-body a { color:#8b4513; }
+    .markdown-body blockquote { border-left:3px solid #c8a96e; color:#7a6a5a; background:#ede0c4; font-style:italic; }
+    .markdown-body code { background:#ede0c4; color:#8b4513; }
+    .markdown-body pre { background:#ede0c4; border:1px solid #d4c4a0; }
+    .markdown-body th { background:#ede0c4; border:1px solid #d4c4a0; }
+    .markdown-body td { border:1px solid #d4c4a0; }
+    .markdown-body hr { border-top:1px solid #c8b89a; }`
+},
+{
+  id: 'ghost', name: 'Ghost', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#ffffff', title:'#15171a', body:'#3d4550', code:'#f4f5f6' },
+  css: `.markdown-body { background:#fff; color:#3d4550; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2em; color:#15171a; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.5em; color:#15171a; border:none; font-weight:600; }
+    .markdown-body h3 { font-size:1.2em; color:#15171a; font-weight:600; }
+    .markdown-body a { color:#ff0095; }
+    .markdown-body blockquote { border-left:3px solid #ff0095; color:#738a94; background:transparent; }
+    .markdown-body code { background:#f4f5f6; color:#15171a; }
+    .markdown-body pre { background:#f4f5f6; border:1px solid #e5eff5; }
+    .markdown-body th { background:#f4f5f6; border:1px solid #e5eff5; }
+    .markdown-body td { border:1px solid #e5eff5; }
+    .markdown-body hr { border-top:1px solid #e5eff5; }`
+},
+{
+  id: 'substack', name: 'Substack', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#ffffff', title:'#1a1a1a', body:'#333', code:'#f2f2f2' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:Georgia,'Times New Roman',serif; padding:48px 56px; max-width:720px; margin:0 auto; }
+    .markdown-body h1 { font-size:2em; color:#1a1a1a; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.5em; color:#1a1a1a; border:none; font-weight:600; }
+    .markdown-body a { color:#ff6719; }
+    .markdown-body blockquote { border-left:3px solid #ff6719; color:#666; background:transparent; font-style:italic; }
+    .markdown-body code { background:#f2f2f2; color:#1a1a1a; }
+    .markdown-body pre { background:#f2f2f2; border:1px solid #e5e5e5; }
+    .markdown-body th { background:#f2f2f2; border:1px solid #e5e5e5; }
+    .markdown-body td { border:1px solid #e5e5e5; }
+    .markdown-body hr { border-top:1px solid #e5e5e5; }`
+},
+{
+  id: 'bear', name: 'Bear', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#fefefe', title:'#2c2c2c', body:'#4a4a4a', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fefefe; color:#4a4a4a; font-family:-apple-system,BlinkMacSystemFont,sans-serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:1.8em; color:#2c2c2c; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.4em; color:#2c2c2c; border:none; font-weight:600; }
+    .markdown-body a { color:#e8a838; }
+    .markdown-body blockquote { border-left:3px solid #e8a838; color:#888; background:transparent; }
+    .markdown-body code { background:#f5f5f5; color:#e8a838; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #eee; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #eee; }
+    .markdown-body td { border:1px solid #eee; }
+    .markdown-body hr { border-top:1px solid #eee; }`
+},
+{
+  id: 'ink', name: 'Ink', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#f8f8f8', title:'#111', body:'#333', code:'#efefef' },
+  css: `.markdown-body { background:#f8f8f8; color:#333; font-family:'Georgia',serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2em; color:#111; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.5em; color:#222; border:none; border-bottom:1px solid #ddd; }
+    .markdown-body a { color:#111; text-decoration:underline; }
+    .markdown-body blockquote { border-left:3px solid #111; color:#666; background:transparent; font-style:italic; }
+    .markdown-body code { background:#efefef; color:#111; }
+    .markdown-body pre { background:#efefef; border:1px solid #ddd; }
+    .markdown-body th { background:#efefef; border:1px solid #ddd; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:2px solid #111; }`
+},
+{
+  id: 'mono', name: 'Mono', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#ffffff', title:'#000', body:'#333', code:'#f0f0f0' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Courier New',monospace; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#000; border:none; font-family:'Courier New',monospace; }
+    .markdown-body h1 { font-size:1.8em; border-bottom:2px solid #000; padding-bottom:.2em; }
+    .markdown-body a { color:#000; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #000; color:#666; background:#f0f0f0; }
+    .markdown-body code { background:#f0f0f0; color:#000; }
+    .markdown-body pre { background:#f0f0f0; border:1px solid #ccc; }
+    .markdown-body th { background:#f0f0f0; border:1px solid #ccc; }
+    .markdown-body td { border:1px solid #ccc; }
+    .markdown-body hr { border-top:1px solid #ccc; }`
+},
+{
+  id: 'bare', name: 'Bare', category: '◻️ 极简', tag: 'minimal',
+  preview: { bg:'#ffffff', title:'#000', body:'#000', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#000; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#000; border:none; }
+    .markdown-body a { color:#000; }
+    .markdown-body blockquote { border-left:2px solid #000; color:#555; background:transparent; }
+    .markdown-body code { background:#f5f5f5; color:#000; }
+    .markdown-body pre { background:#f5f5f5; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #ccc; }
+    .markdown-body td { border:1px solid #ccc; }
+    .markdown-body hr { border-top:1px solid #ccc; }`
+},
+
+/* ── 📺 复古系 (10) ── */
+{
+  id: 'retro', name: 'Retro', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#f5e6c8', title:'#3d2b1f', body:'#5c4033', code:'#e8d5b0' },
+  css: `.markdown-body { background:#f5e6c8; color:#5c4033; font-family:'Courier New',monospace; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#3d2b1f; border-bottom:3px double #8b6914; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#4a3020; border-bottom:1px solid #c8a96e; }
+    .markdown-body a { color:#8b4513; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #8b6914; color:#7a6a5a; background:#ede0c4; }
+    .markdown-body code { background:#e8d5b0; color:#8b4513; }
+    .markdown-body pre { background:#e8d5b0; border:2px solid #c8a96e; }
+    .markdown-body th { background:#e8d5b0; border:1px solid #c8a96e; }
+    .markdown-body td { border:1px solid #c8a96e; }
+    .markdown-body hr { border-top:3px double #8b6914; }`
+},
+{
+  id: 'typewriter', name: 'Typewriter', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#f5f0e8', title:'#2c2c2c', body:'#4a4a4a', code:'#e8e0d0' },
+  css: `.markdown-body { background:#f5f0e8; color:#4a4a4a; font-family:'Courier New',Courier,monospace; padding:40px 48px; }
+    .markdown-body h1 { font-size:1.8em; color:#2c2c2c; border:none; border-bottom:2px solid #2c2c2c; padding-bottom:.2em; text-transform:uppercase; letter-spacing:2px; }
+    .markdown-body h2 { font-size:1.4em; color:#3a3a3a; border:none; text-transform:uppercase; letter-spacing:1px; }
+    .markdown-body a { color:#2c2c2c; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #2c2c2c; color:#666; background:#e8e0d0; }
+    .markdown-body code { background:#e8e0d0; color:#2c2c2c; }
+    .markdown-body pre { background:#e8e0d0; border:1px solid #c8c0b0; }
+    .markdown-body th { background:#e8e0d0; border:1px solid #c8c0b0; }
+    .markdown-body td { border:1px solid #c8c0b0; }
+    .markdown-body hr { border-top:2px solid #2c2c2c; }`
+},
+{
+  id: 'terminal', name: 'Terminal', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#0d0d0d', title:'#00ff00', body:'#00cc00', code:'#1a1a1a' },
+  css: `.markdown-body { background:#0d0d0d; color:#00cc00; font-family:'Courier New',monospace; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#00ff00; border-color:#00ff00; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #00ff00; padding-bottom:.3em; }
+    .markdown-body a { color:#00ffff; }
+    .markdown-body blockquote { border-left:4px solid #00ff00; color:#009900; background:#1a1a1a; }
+    .markdown-body code { background:#1a1a1a; color:#ffff00; border:1px solid #00ff00; }
+    .markdown-body pre { background:#1a1a1a; border:1px solid #00ff00; }
+    .markdown-body th { background:#1a1a1a; color:#00ff00; border:1px solid #00ff00; }
+    .markdown-body td { border:1px solid #00ff00; }
+    .markdown-body tr:nth-child(even) td { background:#1a1a1a; }
+    .markdown-body hr { border-top:1px solid #00ff00; }
+    .markdown-body strong { color:#ffff00; }`
+},
+{
+  id: 'amber-terminal', name: 'Amber Terminal', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#0d0800', title:'#ffb000', body:'#cc8800', code:'#1a1000' },
+  css: `.markdown-body { background:#0d0800; color:#cc8800; font-family:'Courier New',monospace; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#ffb000; border-color:#ffb000; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #ffb000; padding-bottom:.3em; }
+    .markdown-body a { color:#ffcc44; }
+    .markdown-body blockquote { border-left:4px solid #ffb000; color:#996600; background:#1a1000; }
+    .markdown-body code { background:#1a1000; color:#ffcc44; border:1px solid #ffb000; }
+    .markdown-body pre { background:#1a1000; border:1px solid #ffb000; }
+    .markdown-body th { background:#1a1000; color:#ffb000; border:1px solid #ffb000; }
+    .markdown-body td { border:1px solid #ffb000; }
+    .markdown-body tr:nth-child(even) td { background:#1a1000; }
+    .markdown-body hr { border-top:1px solid #ffb000; }`
+},
+{
+  id: 'sepia', name: 'Sepia', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#f1e7d0', title:'#5b4636', body:'#7a6652', code:'#e8d5b0' },
+  css: `.markdown-body { background:#f1e7d0; color:#7a6652; font-family:Georgia,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2em; color:#5b4636; border-bottom:2px solid #c8a96e; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#6a5545; border-bottom:1px solid #d4b896; }
+    .markdown-body a { color:#8b4513; }
+    .markdown-body blockquote { border-left:4px solid #c8a96e; color:#9a8070; background:#e8d5b0; font-style:italic; }
+    .markdown-body code { background:#e8d5b0; color:#8b4513; }
+    .markdown-body pre { background:#e8d5b0; border:1px solid #c8a96e; }
+    .markdown-body th { background:#e8d5b0; border:1px solid #c8a96e; }
+    .markdown-body td { border:1px solid #c8a96e; }
+    .markdown-body hr { border-top:2px solid #c8a96e; }`
+},
+{
+  id: 'gruvbox-light', name: 'Gruvbox Light', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#fbf1c7', title:'#3c3836', body:'#504945', code:'#f2e5bc' },
+  css: `.markdown-body { background:#fbf1c7; color:#504945; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#3c3836; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #d5c4a1; padding-bottom:.3em; }
+    .markdown-body a { color:#076678; }
+    .markdown-body blockquote { border-left:4px solid #d5c4a1; color:#7c6f64; background:#f2e5bc; }
+    .markdown-body code { background:#f2e5bc; color:#9d0006; border:1px solid #d5c4a1; }
+    .markdown-body pre { background:#f2e5bc; border:1px solid #d5c4a1; }
+    .markdown-body th { background:#f2e5bc; border:1px solid #d5c4a1; }
+    .markdown-body td { border:1px solid #d5c4a1; }
+    .markdown-body tr:nth-child(even) td { background:#f2e5bc; }
+    .markdown-body hr { border-top:1px solid #d5c4a1; }`
+},
+{
+  id: 'dos', name: 'DOS', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#0000aa', title:'#ffffff', body:'#aaaaaa', code:'#000088' },
+  css: `.markdown-body { background:#0000aa; color:#aaaaaa; font-family:'Courier New',monospace; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#ffffff; border:none; }
+    .markdown-body h1 { border-bottom:1px solid #ffffff; padding-bottom:.2em; }
+    .markdown-body a { color:#ffff55; }
+    .markdown-body blockquote { border-left:4px solid #ffffff; color:#aaaaaa; background:#000088; }
+    .markdown-body code { background:#000088; color:#55ffff; border:1px solid #aaaaaa; }
+    .markdown-body pre { background:#000088; border:1px solid #aaaaaa; }
+    .markdown-body th { background:#000088; color:#ffffff; border:1px solid #aaaaaa; }
+    .markdown-body td { border:1px solid #aaaaaa; }
+    .markdown-body tr:nth-child(even) td { background:#000088; }
+    .markdown-body hr { border-top:1px solid #aaaaaa; }
+    .markdown-body strong { color:#ffffff; }`
+},
+{
+  id: 'newspaper-1920s', name: 'Newspaper 1920s', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#f5f0e0', title:'#1a1a1a', body:'#333', code:'#e8e0c8' },
+  css: `.markdown-body { background:#f5f0e0; color:#333; font-family:'Times New Roman',Times,serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2.5em; color:#1a1a1a; border:none; border-bottom:4px double #1a1a1a; padding-bottom:.2em; text-align:center; text-transform:uppercase; letter-spacing:3px; }
+    .markdown-body h2 { font-size:1.6em; color:#1a1a1a; border:none; border-bottom:2px solid #1a1a1a; text-align:center; }
+    .markdown-body a { color:#1a1a1a; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #1a1a1a; color:#555; background:#e8e0c8; font-style:italic; }
+    .markdown-body code { background:#e8e0c8; color:#1a1a1a; }
+    .markdown-body pre { background:#e8e0c8; border:2px solid #1a1a1a; }
+    .markdown-body th { background:#1a1a1a; color:#f5f0e0; border:1px solid #1a1a1a; }
+    .markdown-body td { border:1px solid #1a1a1a; }
+    .markdown-body hr { border-top:4px double #1a1a1a; }`
+},
+{
+  id: 'vintage-paper', name: 'Vintage Paper', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#f2e8d5', title:'#4a3728', body:'#6b5040', code:'#e5d5b8' },
+  css: `.markdown-body { background:#f2e8d5; color:#6b5040; font-family:Georgia,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2em; color:#4a3728; border:none; border-bottom:1px solid #c8a96e; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#5a4030; border:none; }
+    .markdown-body a { color:#8b4513; }
+    .markdown-body blockquote { border-left:3px solid #c8a96e; color:#8a7060; background:#e5d5b8; font-style:italic; }
+    .markdown-body code { background:#e5d5b8; color:#8b4513; }
+    .markdown-body pre { background:#e5d5b8; border:1px solid #c8a96e; }
+    .markdown-body th { background:#e5d5b8; border:1px solid #c8a96e; }
+    .markdown-body td { border:1px solid #c8a96e; }
+    .markdown-body hr { border-top:2px solid #c8a96e; }`
+},
+{
+  id: 'commodore64', name: 'Commodore 64', category: '📺 复古', tag: 'retro',
+  preview: { bg:'#4040a0', title:'#a0a0ff', body:'#8080e0', code:'#3030a0' },
+  css: `.markdown-body { background:#4040a0; color:#a0a0ff; font-family:'Courier New',monospace; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#ffffff; border:none; }
+    .markdown-body h1 { border-bottom:1px solid #a0a0ff; padding-bottom:.2em; }
+    .markdown-body a { color:#ffff88; }
+    .markdown-body blockquote { border-left:4px solid #a0a0ff; color:#8080e0; background:#3030a0; }
+    .markdown-body code { background:#3030a0; color:#ffff88; border:1px solid #a0a0ff; }
+    .markdown-body pre { background:#3030a0; border:1px solid #a0a0ff; }
+    .markdown-body th { background:#3030a0; color:#ffffff; border:1px solid #a0a0ff; }
+    .markdown-body td { border:1px solid #a0a0ff; }
+    .markdown-body tr:nth-child(even) td { background:#3030a0; }
+    .markdown-body hr { border-top:1px solid #a0a0ff; }`
+},
+
+/* ── 📖 技术文档系 (10) ── */
+{
+  id: 'material-docs', name: 'Material Docs', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#ffffff', title:'#212121', body:'#424242', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#424242; font-family:'Roboto','Noto Sans SC',sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#212121; border:none; font-weight:400; }
+    .markdown-body h2 { font-size:1.5em; color:#212121; border:none; border-bottom:1px solid #e0e0e0; font-weight:400; }
+    .markdown-body h3 { font-size:1.2em; color:#212121; font-weight:500; }
+    .markdown-body a { color:#1565c0; }
+    .markdown-body blockquote { border-left:4px solid #1565c0; color:#616161; background:#e3f2fd; }
+    .markdown-body code { background:#f5f5f5; color:#c62828; border-radius:2px; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #e0e0e0; border-radius:4px; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #e0e0e0; }
+    .markdown-body td { border:1px solid #e0e0e0; }
+    .markdown-body hr { border-top:1px solid #e0e0e0; }`
+},
+{
+  id: 'readthedocs', name: 'ReadTheDocs', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#fcfcfc', title:'#404040', body:'#404040', code:'#f8f8f8' },
+  css: `.markdown-body { background:#fcfcfc; color:#404040; font-family:'Lato','Noto Sans SC',sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:1.875em; color:#404040; border:none; border-bottom:1px solid #e1e4e5; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#404040; border:none; border-bottom:1px solid #e1e4e5; }
+    .markdown-body a { color:#2980b9; }
+    .markdown-body blockquote { border-left:4px solid #2980b9; color:#777; background:#f8f8f8; }
+    .markdown-body code { background:#f8f8f8; color:#e74c3c; border:1px solid #e1e4e5; }
+    .markdown-body pre { background:#f8f8f8; border:1px solid #e1e4e5; }
+    .markdown-body th { background:#f8f8f8; border:1px solid #e1e4e5; }
+    .markdown-body td { border:1px solid #e1e4e5; }
+    .markdown-body hr { border-top:1px solid #e1e4e5; }`
+},
+{
+  id: 'gitbook', name: 'GitBook', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#ffffff', title:'#1a1a1a', body:'#3d3d3d', code:'#f6f8fa' },
+  css: `.markdown-body { background:#fff; color:#3d3d3d; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#1a1a1a; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.5em; color:#1a1a1a; border:none; font-weight:600; }
+    .markdown-body h3 { font-size:1.2em; color:#1a1a1a; font-weight:600; }
+    .markdown-body a { color:#3884ff; }
+    .markdown-body blockquote { border-left:4px solid #3884ff; color:#6e6e6e; background:#f6f8fa; }
+    .markdown-body code { background:#f6f8fa; color:#e53e3e; border:1px solid #e2e8f0; }
+    .markdown-body pre { background:#f6f8fa; border:1px solid #e2e8f0; }
+    .markdown-body th { background:#f6f8fa; border:1px solid #e2e8f0; }
+    .markdown-body td { border:1px solid #e2e8f0; }
+    .markdown-body hr { border-top:1px solid #e2e8f0; }`
+},
+{
+  id: 'stripe-docs', name: 'Stripe Docs', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#ffffff', title:'#1a1f36', body:'#3c4257', code:'#f6f9fc' },
+  css: `.markdown-body { background:#fff; color:#3c4257; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#1a1f36; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.5em; color:#1a1f36; border:none; font-weight:600; }
+    .markdown-body a { color:#5469d4; }
+    .markdown-body blockquote { border-left:4px solid #5469d4; color:#697386; background:#f6f9fc; }
+    .markdown-body code { background:#f6f9fc; color:#e56f4a; border:1px solid #e3e8ee; }
+    .markdown-body pre { background:#f6f9fc; border:1px solid #e3e8ee; }
+    .markdown-body th { background:#f6f9fc; border:1px solid #e3e8ee; }
+    .markdown-body td { border:1px solid #e3e8ee; }
+    .markdown-body hr { border-top:1px solid #e3e8ee; }`
+},
+{
+  id: 'vercel-docs', name: 'Vercel Docs', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#ffffff', title:'#000', body:'#444', code:'#f4f4f4' },
+  css: `.markdown-body { background:#fff; color:#444; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#000; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.5em; color:#000; border:none; font-weight:600; }
+    .markdown-body a { color:#0070f3; }
+    .markdown-body blockquote { border-left:4px solid #0070f3; color:#666; background:#f4f4f4; }
+    .markdown-body code { background:#f4f4f4; color:#e00; border:1px solid #eaeaea; }
+    .markdown-body pre { background:#f4f4f4; border:1px solid #eaeaea; }
+    .markdown-body th { background:#f4f4f4; border:1px solid #eaeaea; }
+    .markdown-body td { border:1px solid #eaeaea; }
+    .markdown-body hr { border-top:1px solid #eaeaea; }`
+},
+{
+  id: 'obsidian', name: 'Obsidian', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#1e1e1e', title:'#dcddde', body:'#adadad', code:'#2d2d2d' },
+  css: `.markdown-body { background:#1e1e1e; color:#adadad; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#dcddde; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #3d3d3d; padding-bottom:.3em; }
+    .markdown-body a { color:#7f6df2; }
+    .markdown-body blockquote { border-left:4px solid #7f6df2; color:#6e6e6e; background:#2d2d2d; }
+    .markdown-body code { background:#2d2d2d; color:#e06c75; border:1px solid #3d3d3d; }
+    .markdown-body pre { background:#2d2d2d; border:1px solid #3d3d3d; }
+    .markdown-body th { background:#2d2d2d; color:#dcddde; border:1px solid #3d3d3d; }
+    .markdown-body td { border:1px solid #3d3d3d; }
+    .markdown-body tr:nth-child(even) td { background:#2d2d2d; }
+    .markdown-body hr { border-top:1px solid #3d3d3d; }`
+},
+{
+  id: 'api-reference', name: 'API Reference', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#0f172a', title:'#e2e8f0', body:'#94a3b8', code:'#1e293b' },
+  css: `.markdown-body { background:#0f172a; color:#94a3b8; font-family:'JetBrains Mono','Fira Code',monospace; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#e2e8f0; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #1e293b; padding-bottom:.3em; }
+    .markdown-body a { color:#38bdf8; }
+    .markdown-body blockquote { border-left:4px solid #334155; color:#64748b; background:#1e293b; }
+    .markdown-body code { background:#1e293b; color:#f472b6; border:1px solid #334155; }
+    .markdown-body pre { background:#1e293b; border:1px solid #334155; }
+    .markdown-body th { background:#1e293b; color:#e2e8f0; border:1px solid #334155; }
+    .markdown-body td { border:1px solid #334155; }
+    .markdown-body tr:nth-child(even) td { background:#1e293b; }
+    .markdown-body hr { border-top:1px solid #1e293b; }`
+},
+{
+  id: 'jupyter', name: 'Jupyter', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#ffffff', title:'#333', body:'#555', code:'#f7f7f7' },
+  css: `.markdown-body { background:#fff; color:#555; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#333; border:none; border-bottom:1px solid #eee; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#333; border:none; border-bottom:1px solid #eee; }
+    .markdown-body a { color:#2196f3; }
+    .markdown-body blockquote { border-left:4px solid #2196f3; color:#777; background:#f7f7f7; }
+    .markdown-body code { background:#f7f7f7; color:#e53935; border:1px solid #eee; }
+    .markdown-body pre { background:#f7f7f7; border:1px solid #eee; }
+    .markdown-body th { background:#f7f7f7; border:1px solid #eee; }
+    .markdown-body td { border:1px solid #eee; }
+    .markdown-body hr { border-top:1px solid #eee; }`
+},
+{
+  id: 'encyclopedia', name: 'Encyclopedia', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#ffffff', title:'#000', body:'#202122', code:'#f8f9fa' },
+  css: `.markdown-body { background:#fff; color:#202122; font-family:'Linux Libertine',Georgia,Times,serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#000; border:none; border-bottom:1px solid #a2a9b1; padding-bottom:.2em; font-weight:normal; }
+    .markdown-body h2 { font-size:1.5em; color:#000; border:none; border-bottom:1px solid #a2a9b1; font-weight:normal; }
+    .markdown-body h3 { font-size:1.2em; color:#000; font-weight:bold; }
+    .markdown-body a { color:#0645ad; }
+    .markdown-body blockquote { border-left:4px solid #a2a9b1; color:#555; background:#f8f9fa; }
+    .markdown-body code { background:#f8f9fa; color:#000; border:1px solid #a2a9b1; }
+    .markdown-body pre { background:#f8f9fa; border:1px solid #a2a9b1; }
+    .markdown-body th { background:#eaecf0; border:1px solid #a2a9b1; }
+    .markdown-body td { border:1px solid #a2a9b1; }
+    .markdown-body tr:nth-child(even) td { background:#f8f9fa; }
+    .markdown-body hr { border-top:1px solid #a2a9b1; }`
+},
+{
+  id: 'changelog', name: 'Changelog', category: '📖 技术文档', tag: 'docs',
+  preview: { bg:'#ffffff', title:'#111', body:'#333', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Courier New',monospace; padding:40px 48px; }
+    .markdown-body h1 { font-size:1.8em; color:#111; border:none; border-bottom:3px solid #111; padding-bottom:.2em; }
+    .markdown-body h2 { font-size:1.4em; color:#111; border:none; border-left:4px solid #111; padding-left:12px; }
+    .markdown-body h3 { font-size:1.1em; color:#333; }
+    .markdown-body a { color:#0070f3; }
+    .markdown-body blockquote { border-left:4px solid #0070f3; color:#666; background:#f5f5f5; }
+    .markdown-body code { background:#f5f5f5; color:#e00; border:1px solid #eee; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #eee; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #eee; }
+    .markdown-body td { border:1px solid #eee; }
+    .markdown-body hr { border-top:2px solid #111; }`
+},
+
+/* ── ✨ 创意设计系 (14) ── */
+{
+  id: 'glassmorphism', name: 'Glassmorphism', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#667eea', title:'#fff', body:'rgba(255,255,255,0.8)', code:'rgba(255,255,255,0.15)' },
+  css: `.markdown-body { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:rgba(255,255,255,0.9); padding:40px 48px; border-radius:16px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#fff; border-color:rgba(255,255,255,0.3); }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid rgba(255,255,255,0.3); padding-bottom:.3em; }
+    .markdown-body a { color:#a8edea; }
+    .markdown-body blockquote { border-left:4px solid rgba(255,255,255,0.5); color:rgba(255,255,255,0.7); background:rgba(255,255,255,0.1); backdrop-filter:blur(10px); }
+    .markdown-body code { background:rgba(255,255,255,0.15); color:#fed7aa; border:1px solid rgba(255,255,255,0.2); }
+    .markdown-body pre { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2); backdrop-filter:blur(10px); }
+    .markdown-body th { background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.2); }
+    .markdown-body td { border:1px solid rgba(255,255,255,0.2); }
+    .markdown-body tr:nth-child(even) td { background:rgba(255,255,255,0.05); }
+    .markdown-body hr { border-top:1px solid rgba(255,255,255,0.3); }
+    .markdown-body strong { color:#fff; }`
+},
+{
+  id: 'cyberpunk', name: 'Cyberpunk', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#0a0a0f', title:'#00ffff', body:'#ff00ff', code:'#0d0d1a' },
+  css: `.markdown-body { background:#0a0a0f; color:#e0e0ff; padding:40px 48px; }
+    .markdown-body h1 { font-size:2.2em; color:#00ffff; border:none; border-bottom:2px solid #00ffff; padding-bottom:.3em; text-shadow:0 0 10px #00ffff; letter-spacing:2px; }
+    .markdown-body h2 { font-size:1.6em; color:#ff00ff; border:none; text-shadow:0 0 8px #ff00ff; }
+    .markdown-body h3 { font-size:1.2em; color:#ffff00; }
+    .markdown-body a { color:#00ffff; text-shadow:0 0 5px #00ffff; }
+    .markdown-body blockquote { border-left:4px solid #ff00ff; color:#a0a0ff; background:#0d0d1a; }
+    .markdown-body code { background:#0d0d1a; color:#00ffff; border:1px solid #00ffff; }
+    .markdown-body pre { background:#0d0d1a; border:1px solid #ff00ff; }
+    .markdown-body th { background:#0d0d1a; color:#00ffff; border:1px solid #00ffff; }
+    .markdown-body td { border:1px solid #ff00ff; }
+    .markdown-body tr:nth-child(even) td { background:#0d0d1a; }
+    .markdown-body hr { border-top:2px solid #ff00ff; box-shadow:0 0 8px #ff00ff; }
+    .markdown-body strong { color:#ffff00; }`
+},
+{
+  id: 'neon', name: 'Neon', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#0d0d0d', title:'#39ff14', body:'#00bfff', code:'#1a1a1a' },
+  css: `.markdown-body { background:#0d0d0d; color:#e0e0e0; padding:40px 48px; }
+    .markdown-body h1 { color:#39ff14; border:none; border-bottom:2px solid #39ff14; padding-bottom:.3em; text-shadow:0 0 10px #39ff14; }
+    .markdown-body h2 { color:#00bfff; border:none; text-shadow:0 0 8px #00bfff; }
+    .markdown-body h3 { color:#ff6ec7; }
+    .markdown-body a { color:#39ff14; }
+    .markdown-body blockquote { border-left:4px solid #39ff14; color:#aaa; background:#1a1a1a; }
+    .markdown-body code { background:#1a1a1a; color:#ff6ec7; border:1px solid #39ff14; }
+    .markdown-body pre { background:#1a1a1a; border:1px solid #00bfff; }
+    .markdown-body th { background:#1a1a1a; color:#39ff14; border:1px solid #39ff14; }
+    .markdown-body td { border:1px solid #00bfff; }
+    .markdown-body tr:nth-child(even) td { background:#1a1a1a; }
+    .markdown-body hr { border-top:2px solid #39ff14; }`
+},
+{
+  id: 'vaporwave', name: 'Vaporwave', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#1a0533', title:'#ff71ce', body:'#b967ff', code:'#2d0a4e' },
+  css: `.markdown-body { background:#1a0533; color:#b967ff; padding:40px 48px; }
+    .markdown-body h1 { color:#ff71ce; border:none; border-bottom:2px solid #ff71ce; padding-bottom:.3em; text-shadow:0 0 10px #ff71ce; letter-spacing:3px; }
+    .markdown-body h2 { color:#01cdfe; border:none; text-shadow:0 0 8px #01cdfe; }
+    .markdown-body h3 { color:#05ffa1; }
+    .markdown-body a { color:#ff71ce; }
+    .markdown-body blockquote { border-left:4px solid #ff71ce; color:#9a5fc7; background:#2d0a4e; }
+    .markdown-body code { background:#2d0a4e; color:#01cdfe; border:1px solid #ff71ce; }
+    .markdown-body pre { background:#2d0a4e; border:1px solid #01cdfe; }
+    .markdown-body th { background:#2d0a4e; color:#ff71ce; border:1px solid #ff71ce; }
+    .markdown-body td { border:1px solid #b967ff; }
+    .markdown-body tr:nth-child(even) td { background:#2d0a4e; }
+    .markdown-body hr { border-top:2px solid #ff71ce; }
+    .markdown-body strong { color:#05ffa1; }`
+},
+{
+  id: 'synthwave', name: 'Synthwave', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#2b213a', title:'#f92aad', body:'#e0d7ff', code:'#1a1028' },
+  css: `.markdown-body { background:#2b213a; color:#e0d7ff; padding:40px 48px; }
+    .markdown-body h1 { color:#f92aad; border:none; border-bottom:2px solid #f92aad; padding-bottom:.3em; text-shadow:0 0 10px #f92aad; }
+    .markdown-body h2 { color:#72f1b8; border:none; text-shadow:0 0 8px #72f1b8; }
+    .markdown-body h3 { color:#fede5d; }
+    .markdown-body a { color:#f92aad; }
+    .markdown-body blockquote { border-left:4px solid #f92aad; color:#a09bc0; background:#1a1028; }
+    .markdown-body code { background:#1a1028; color:#72f1b8; border:1px solid #f92aad; }
+    .markdown-body pre { background:#1a1028; border:1px solid #72f1b8; }
+    .markdown-body th { background:#1a1028; color:#f92aad; border:1px solid #f92aad; }
+    .markdown-body td { border:1px solid #72f1b8; }
+    .markdown-body tr:nth-child(even) td { background:#1a1028; }
+    .markdown-body hr { border-top:2px solid #f92aad; }
+    .markdown-body strong { color:#fede5d; }`
+},
+{
+  id: 'aurora', name: 'Aurora', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#0a1628', title:'#88d8b0', body:'#a8c8e8', code:'#0d1f3c' },
+  css: `.markdown-body { background:#0a1628; color:#a8c8e8; padding:40px 48px; }
+    .markdown-body h1 { color:#88d8b0; border:none; border-bottom:1px solid #1e3a5f; padding-bottom:.3em; }
+    .markdown-body h2 { color:#7ec8e3; border:none; }
+    .markdown-body h3 { color:#b8a9e8; }
+    .markdown-body a { color:#88d8b0; }
+    .markdown-body blockquote { border-left:4px solid #88d8b0; color:#6a8fa8; background:#0d1f3c; }
+    .markdown-body code { background:#0d1f3c; color:#f0a8c8; border:1px solid #1e3a5f; }
+    .markdown-body pre { background:#0d1f3c; border:1px solid #1e3a5f; }
+    .markdown-body th { background:#0d1f3c; color:#88d8b0; border:1px solid #1e3a5f; }
+    .markdown-body td { border:1px solid #1e3a5f; }
+    .markdown-body tr:nth-child(even) td { background:#0d1f3c; }
+    .markdown-body hr { border-top:1px solid #1e3a5f; }`
+},
+{
+  id: 'gradient', name: 'Gradient', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#f093fb', title:'#fff', body:'rgba(255,255,255,0.9)', code:'rgba(255,255,255,0.2)' },
+  css: `.markdown-body { background:linear-gradient(135deg,#f093fb 0%,#f5576c 50%,#4facfe 100%); color:rgba(255,255,255,0.95); padding:40px 48px; border-radius:12px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#fff; border-color:rgba(255,255,255,0.4); }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid rgba(255,255,255,0.4); padding-bottom:.3em; }
+    .markdown-body a { color:#fff; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid rgba(255,255,255,0.6); color:rgba(255,255,255,0.8); background:rgba(255,255,255,0.15); }
+    .markdown-body code { background:rgba(255,255,255,0.2); color:#fff; border:1px solid rgba(255,255,255,0.3); }
+    .markdown-body pre { background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3); }
+    .markdown-body th { background:rgba(255,255,255,0.2); color:#fff; border:1px solid rgba(255,255,255,0.3); }
+    .markdown-body td { border:1px solid rgba(255,255,255,0.3); }
+    .markdown-body hr { border-top:1px solid rgba(255,255,255,0.4); }
+    .markdown-body strong { color:#fff; }`
+},
+{
+  id: 'pastel', name: 'Pastel', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#fef9ff', title:'#6b4c7a', body:'#7a6b8a', code:'#f0e8f8' },
+  css: `.markdown-body { background:#fef9ff; color:#7a6b8a; padding:40px 48px; }
+    .markdown-body h1 { color:#6b4c7a; border:none; border-bottom:2px solid #d4a8e8; padding-bottom:.3em; }
+    .markdown-body h2 { color:#7a5c8a; border:none; }
+    .markdown-body h3 { color:#8a6c9a; }
+    .markdown-body a { color:#c084e8; }
+    .markdown-body blockquote { border-left:4px solid #d4a8e8; color:#9a8aaa; background:#f0e8f8; }
+    .markdown-body code { background:#f0e8f8; color:#c084e8; border:1px solid #d4a8e8; }
+    .markdown-body pre { background:#f0e8f8; border:1px solid #d4a8e8; }
+    .markdown-body th { background:#f0e8f8; border:1px solid #d4a8e8; }
+    .markdown-body td { border:1px solid #d4a8e8; }
+    .markdown-body hr { border-top:2px solid #d4a8e8; }`
+},
+{
+  id: 'brutalist', name: 'Brutalist', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#ffff00', title:'#000', body:'#000', code:'#fff' },
+  css: `.markdown-body { background:#ffff00; color:#000; font-family:'Arial Black',Arial,sans-serif; padding:40px 48px; border:4px solid #000; }
+    .markdown-body h1 { font-size:3em; color:#000; border:none; border-bottom:6px solid #000; padding-bottom:.2em; text-transform:uppercase; letter-spacing:-2px; }
+    .markdown-body h2 { font-size:2em; color:#000; border:none; border-left:8px solid #000; padding-left:12px; text-transform:uppercase; }
+    .markdown-body h3 { font-size:1.4em; color:#000; text-transform:uppercase; }
+    .markdown-body a { color:#000; text-decoration:underline; font-weight:900; }
+    .markdown-body blockquote { border-left:8px solid #000; color:#000; background:#fff; padding:.5em 1em; }
+    .markdown-body code { background:#fff; color:#000; border:2px solid #000; }
+    .markdown-body pre { background:#fff; border:4px solid #000; }
+    .markdown-body th { background:#000; color:#ffff00; border:2px solid #000; }
+    .markdown-body td { border:2px solid #000; }
+    .markdown-body hr { border-top:6px solid #000; }`
+},
+{
+  id: 'ink-wash', name: 'Ink Wash', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#f8f4ef', title:'#2c2c2c', body:'#5a5a5a', code:'#ede8e0' },
+  css: `.markdown-body { background:#f8f4ef; color:#5a5a5a; font-family:'Noto Serif SC',Georgia,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2em; color:#2c2c2c; border:none; border-bottom:2px solid #2c2c2c; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#3a3a3a; border:none; }
+    .markdown-body a { color:#8b4513; }
+    .markdown-body blockquote { border-left:3px solid #8b4513; color:#7a7a7a; background:#ede8e0; font-style:italic; }
+    .markdown-body code { background:#ede8e0; color:#8b4513; }
+    .markdown-body pre { background:#ede8e0; border:1px solid #d4cfc8; }
+    .markdown-body th { background:#ede8e0; border:1px solid #d4cfc8; }
+    .markdown-body td { border:1px solid #d4cfc8; }
+    .markdown-body hr { border-top:1px solid #2c2c2c; }`
+},
+{
+  id: 'candy', name: 'Candy', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#fff0f5', title:'#ff4d8d', body:'#ff80b3', code:'#ffe0ee' },
+  css: `.markdown-body { background:#fff0f5; color:#cc3366; padding:40px 48px; }
+    .markdown-body h1 { color:#ff4d8d; border:none; border-bottom:3px solid #ff4d8d; padding-bottom:.3em; }
+    .markdown-body h2 { color:#ff6699; border:none; }
+    .markdown-body h3 { color:#ff80b3; }
+    .markdown-body a { color:#ff4d8d; }
+    .markdown-body blockquote { border-left:4px solid #ff4d8d; color:#cc6699; background:#ffe0ee; }
+    .markdown-body code { background:#ffe0ee; color:#ff4d8d; border:1px solid #ffb3cc; }
+    .markdown-body pre { background:#ffe0ee; border:1px solid #ffb3cc; }
+    .markdown-body th { background:#ffe0ee; border:1px solid #ffb3cc; }
+    .markdown-body td { border:1px solid #ffb3cc; }
+    .markdown-body hr { border-top:2px solid #ff4d8d; }`
+},
+{
+  id: 'holographic', name: 'Holographic', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#0a0a1a', title:'#c0f0ff', body:'#a0d0f0', code:'#0d0d2a' },
+  css: `.markdown-body { background:#0a0a1a; color:#a0d0f0; padding:40px 48px; }
+    .markdown-body h1 { background:linear-gradient(90deg,#ff0080,#00ffff,#ff0080); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; border:none; font-size:2.2em; }
+    .markdown-body h2 { color:#00ffff; border:none; border-bottom:1px solid #00ffff; padding-bottom:.3em; }
+    .markdown-body h3 { color:#ff80ff; }
+    .markdown-body a { color:#00ffff; }
+    .markdown-body blockquote { border-left:4px solid #00ffff; color:#6090b0; background:#0d0d2a; }
+    .markdown-body code { background:#0d0d2a; color:#ff80ff; border:1px solid #00ffff; }
+    .markdown-body pre { background:#0d0d2a; border:1px solid #00ffff; }
+    .markdown-body th { background:#0d0d2a; color:#00ffff; border:1px solid #00ffff; }
+    .markdown-body td { border:1px solid #00ffff; }
+    .markdown-body tr:nth-child(even) td { background:#0d0d2a; }
+    .markdown-body hr { border-top:1px solid #00ffff; }`
+},
+{
+  id: 'origami', name: 'Origami', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#fafafa', title:'#e74c3c', body:'#555', code:'#f0f0f0' },
+  css: `.markdown-body { background:#fafafa; color:#555; padding:40px 48px; }
+    .markdown-body h1 { color:#e74c3c; border:none; border-bottom:3px solid #e74c3c; padding-bottom:.3em; }
+    .markdown-body h2 { color:#e67e22; border:none; border-left:4px solid #e67e22; padding-left:12px; }
+    .markdown-body h3 { color:#f39c12; }
+    .markdown-body a { color:#e74c3c; }
+    .markdown-body blockquote { border-left:4px solid #e74c3c; color:#888; background:#f0f0f0; }
+    .markdown-body code { background:#f0f0f0; color:#e74c3c; border:1px solid #ddd; }
+    .markdown-body pre { background:#f0f0f0; border:1px solid #ddd; }
+    .markdown-body th { background:#f0f0f0; border:1px solid #ddd; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:2px solid #e74c3c; }`
+},
+{
+  id: 'lofi-light', name: 'Lofi Light', category: '✨ 创意', tag: 'creative',
+  preview: { bg:'#f5f0eb', title:'#3d3530', body:'#6b5f58', code:'#ede5dc' },
+  css: `.markdown-body { background:#f5f0eb; color:#6b5f58; padding:40px 48px; }
+    .markdown-body h1 { color:#3d3530; border:none; border-bottom:2px solid #c8b8a8; padding-bottom:.3em; }
+    .markdown-body h2 { color:#4d4038; border:none; }
+    .markdown-body a { color:#8b6914; }
+    .markdown-body blockquote { border-left:3px solid #c8b8a8; color:#8a7a70; background:#ede5dc; }
+    .markdown-body code { background:#ede5dc; color:#8b6914; border:1px solid #d4c4b0; }
+    .markdown-body pre { background:#ede5dc; border:1px solid #d4c4b0; }
+    .markdown-body th { background:#ede5dc; border:1px solid #d4c4b0; }
+    .markdown-body td { border:1px solid #d4c4b0; }
+    .markdown-body hr { border-top:1px solid #c8b8a8; }`
+},
+
+/* ── 🎓 学术系 (10) ── */
+{
+  id: 'latex', name: 'LaTeX / Tufte', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#fffff8', title:'#111', body:'#333', code:'#f5f5f0' },
+  css: `.markdown-body { background:#fffff8; color:#333; font-family:'Computer Modern','Latin Modern',Georgia,serif; padding:48px 56px; max-width:680px; margin:0 auto; }
+    .markdown-body h1 { font-size:2em; color:#111; border:none; font-weight:normal; font-variant:small-caps; letter-spacing:1px; }
+    .markdown-body h2 { font-size:1.5em; color:#222; border:none; font-weight:normal; font-style:italic; }
+    .markdown-body h3 { font-size:1.2em; color:#333; font-weight:bold; }
+    .markdown-body a { color:#111; text-decoration:underline; }
+    .markdown-body blockquote { border-left:2px solid #999; color:#666; background:transparent; font-style:italic; margin-left:2em; }
+    .markdown-body code { background:#f5f5f0; color:#333; font-family:'Courier New',monospace; }
+    .markdown-body pre { background:#f5f5f0; border:1px solid #ddd; }
+    .markdown-body th { background:#f5f5f0; border:1px solid #ddd; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:1px solid #999; }`
+},
+{
+  id: 'ieee-paper', name: 'IEEE Paper', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#ffffff', title:'#000', body:'#333', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Times New Roman',Times,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:1.6em; color:#000; border:none; text-align:center; font-weight:bold; }
+    .markdown-body h2 { font-size:1.2em; color:#000; border:none; text-transform:uppercase; font-weight:bold; }
+    .markdown-body h3 { font-size:1em; color:#000; font-style:italic; font-weight:bold; }
+    .markdown-body a { color:#000; text-decoration:underline; }
+    .markdown-body blockquote { border-left:2px solid #999; color:#555; background:transparent; font-style:italic; }
+    .markdown-body code { background:#f5f5f5; color:#000; font-family:'Courier New',monospace; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #ddd; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #999; font-weight:bold; }
+    .markdown-body td { border:1px solid #999; }
+    .markdown-body hr { border-top:1px solid #999; }`
+},
+{
+  id: 'scholarly', name: 'Scholarly', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#fefefe', title:'#1a1a2e', body:'#333', code:'#f0f0f0' },
+  css: `.markdown-body { background:#fefefe; color:#333; font-family:'Palatino Linotype',Palatino,Georgia,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:1.8em; color:#1a1a2e; border:none; border-bottom:2px solid #1a1a2e; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.4em; color:#1a1a2e; border:none; border-bottom:1px solid #ccc; }
+    .markdown-body a { color:#1a1a2e; text-decoration:underline; }
+    .markdown-body blockquote { border-left:3px solid #1a1a2e; color:#666; background:transparent; font-style:italic; }
+    .markdown-body code { background:#f0f0f0; color:#1a1a2e; }
+    .markdown-body pre { background:#f0f0f0; border:1px solid #ddd; }
+    .markdown-body th { background:#f0f0f0; border:1px solid #ccc; }
+    .markdown-body td { border:1px solid #ccc; }
+    .markdown-body hr { border-top:1px solid #ccc; }`
+},
+{
+  id: 'thesis', name: 'Thesis', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#ffffff', title:'#000080', body:'#333', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Times New Roman',Times,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2em; color:#000080; border:none; border-bottom:2px solid #000080; padding-bottom:.3em; text-align:center; }
+    .markdown-body h2 { font-size:1.5em; color:#000080; border:none; border-bottom:1px solid #000080; }
+    .markdown-body h3 { font-size:1.2em; color:#000080; }
+    .markdown-body a { color:#000080; text-decoration:underline; }
+    .markdown-body blockquote { border-left:3px solid #000080; color:#555; background:#f0f0f8; font-style:italic; }
+    .markdown-body code { background:#f5f5f5; color:#000080; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #ddd; }
+    .markdown-body th { background:#000080; color:#fff; border:1px solid #000080; }
+    .markdown-body td { border:1px solid #ccc; }
+    .markdown-body hr { border-top:2px solid #000080; }`
+},
+{
+  id: 'pandoc-default', name: 'Pandoc Default', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#ffffff', title:'#000', body:'#333', code:'#f8f8f8' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Palatino Linotype',Palatino,Georgia,serif; padding:48px 56px; max-width:700px; margin:0 auto; }
+    .markdown-body h1 { font-size:1.8em; color:#000; border:none; }
+    .markdown-body h2 { font-size:1.4em; color:#000; border:none; }
+    .markdown-body a { color:#0645ad; }
+    .markdown-body blockquote { border-left:3px solid #ccc; color:#666; background:transparent; font-style:italic; }
+    .markdown-body code { background:#f8f8f8; color:#333; font-family:'Courier New',monospace; }
+    .markdown-body pre { background:#f8f8f8; border:1px solid #ddd; }
+    .markdown-body th { background:#f8f8f8; border:1px solid #ccc; }
+    .markdown-body td { border:1px solid #ccc; }
+    .markdown-body hr { border-top:1px solid #ccc; }`
+},
+{
+  id: 'r-markdown', name: 'R Markdown', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#ffffff', title:'#2c3e50', body:'#333', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Source Sans Pro','Helvetica Neue',Helvetica,Arial,sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#2c3e50; border:none; border-bottom:2px solid #2c3e50; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#2c3e50; border:none; border-bottom:1px solid #ddd; }
+    .markdown-body a { color:#2980b9; }
+    .markdown-body blockquote { border-left:4px solid #2980b9; color:#666; background:#f5f5f5; }
+    .markdown-body code { background:#f5f5f5; color:#c7254e; border:1px solid #e1e1e8; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #e1e1e8; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #ddd; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:1px solid #ddd; }`
+},
+{
+  id: 'textbook', name: 'Textbook', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#fefefe', title:'#1a3a5c', body:'#333', code:'#f0f4f8' },
+  css: `.markdown-body { background:#fefefe; color:#333; font-family:'Merriweather',Georgia,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:1.8em; color:#1a3a5c; border:none; border-bottom:3px solid #1a3a5c; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.4em; color:#1a3a5c; border:none; border-bottom:1px solid #c8d8e8; }
+    .markdown-body h3 { font-size:1.1em; color:#2a4a6c; }
+    .markdown-body a { color:#1a3a5c; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #1a3a5c; color:#555; background:#f0f4f8; }
+    .markdown-body code { background:#f0f4f8; color:#1a3a5c; border:1px solid #c8d8e8; }
+    .markdown-body pre { background:#f0f4f8; border:1px solid #c8d8e8; }
+    .markdown-body th { background:#1a3a5c; color:#fff; border:1px solid #1a3a5c; }
+    .markdown-body td { border:1px solid #c8d8e8; }
+    .markdown-body hr { border-top:2px solid #1a3a5c; }`
+},
+{
+  id: 'acm-paper', name: 'ACM Paper', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#ffffff', title:'#000', body:'#333', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Linux Libertine','Times New Roman',Times,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:1.6em; color:#000; border:none; text-align:center; font-weight:bold; }
+    .markdown-body h2 { font-size:1.2em; color:#000; border:none; font-weight:bold; }
+    .markdown-body h3 { font-size:1em; color:#000; font-style:italic; }
+    .markdown-body a { color:#0645ad; }
+    .markdown-body blockquote { border-left:2px solid #999; color:#555; background:transparent; font-style:italic; }
+    .markdown-body code { background:#f5f5f5; color:#000; font-family:'Courier New',monospace; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #ddd; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #999; }
+    .markdown-body td { border:1px solid #999; }
+    .markdown-body hr { border-top:1px solid #999; }`
+},
+{
+  id: 'encyclopedia-dark', name: 'Encyclopedia Dark', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#1a1a2e', title:'#e0e0f0', body:'#b0b0c8', code:'#252540' },
+  css: `.markdown-body { background:#1a1a2e; color:#b0b0c8; font-family:Georgia,serif; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#e0e0f0; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #3a3a5a; padding-bottom:.3em; }
+    .markdown-body a { color:#8080d0; }
+    .markdown-body blockquote { border-left:4px solid #4a4a7a; color:#8080a8; background:#252540; }
+    .markdown-body code { background:#252540; color:#c0a0e0; border:1px solid #4a4a7a; }
+    .markdown-body pre { background:#252540; border:1px solid #4a4a7a; }
+    .markdown-body th { background:#252540; color:#e0e0f0; border:1px solid #4a4a7a; }
+    .markdown-body td { border:1px solid #4a4a7a; }
+    .markdown-body tr:nth-child(even) td { background:#252540; }
+    .markdown-body hr { border-top:1px solid #3a3a5a; }`
+},
+{
+  id: 'rfc-style', name: 'RFC Style', category: '🎓 学术', tag: 'academic',
+  preview: { bg:'#ffffff', title:'#000', body:'#000', code:'#f0f0f0' },
+  css: `.markdown-body { background:#fff; color:#000; font-family:'Courier New',Courier,monospace; padding:40px 48px; max-width:720px; margin:0 auto; }
+    .markdown-body h1 { font-size:1.4em; color:#000; border:none; text-align:center; text-transform:uppercase; }
+    .markdown-body h2 { font-size:1.1em; color:#000; border:none; text-transform:uppercase; }
+    .markdown-body h3 { font-size:1em; color:#000; }
+    .markdown-body a { color:#000; text-decoration:underline; }
+    .markdown-body blockquote { border-left:3px solid #999; color:#333; background:transparent; }
+    .markdown-body code { background:#f0f0f0; color:#000; }
+    .markdown-body pre { background:#f0f0f0; border:1px solid #ccc; }
+    .markdown-body th { background:#f0f0f0; border:1px solid #999; }
+    .markdown-body td { border:1px solid #999; }
+    .markdown-body hr { border-top:1px solid #999; }`
+},
+
+/* ── 📰 编辑出版系 (10) ── */
+{
+  id: 'magazine', name: 'Magazine', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#ffffff', title:'#c0392b', body:'#333', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Georgia',serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2.8em; color:#c0392b; border:none; font-weight:900; line-height:1.1; letter-spacing:-1px; }
+    .markdown-body h2 { font-size:1.8em; color:#c0392b; border:none; border-bottom:3px solid #c0392b; padding-bottom:.2em; }
+    .markdown-body h3 { font-size:1.3em; color:#333; font-weight:700; }
+    .markdown-body a { color:#c0392b; }
+    .markdown-body blockquote { border-left:6px solid #c0392b; color:#555; background:#fdf5f5; font-size:1.2em; font-style:italic; }
+    .markdown-body code { background:#f5f5f5; color:#c0392b; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #ddd; }
+    .markdown-body th { background:#c0392b; color:#fff; border:1px solid #c0392b; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:3px solid #c0392b; }`
+},
+{
+  id: 'newspaper', name: 'Newspaper', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#f8f5f0', title:'#1a1a1a', body:'#333', code:'#ede8e0' },
+  css: `.markdown-body { background:#f8f5f0; color:#333; font-family:'Times New Roman',Times,serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2.4em; color:#1a1a1a; border:none; border-bottom:3px solid #1a1a1a; padding-bottom:.2em; font-weight:900; }
+    .markdown-body h2 { font-size:1.6em; color:#1a1a1a; border:none; border-bottom:1px solid #1a1a1a; }
+    .markdown-body a { color:#1a1a1a; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #1a1a1a; color:#555; background:#ede8e0; font-style:italic; }
+    .markdown-body code { background:#ede8e0; color:#1a1a1a; }
+    .markdown-body pre { background:#ede8e0; border:1px solid #c8c0b0; }
+    .markdown-body th { background:#1a1a1a; color:#f8f5f0; border:1px solid #1a1a1a; }
+    .markdown-body td { border:1px solid #c8c0b0; }
+    .markdown-body hr { border-top:3px double #1a1a1a; }`
+},
+{
+  id: 'newsletter', name: 'Newsletter', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#ffffff', title:'#1a1a1a', body:'#444', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#444; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:40px 48px; max-width:680px; margin:0 auto; }
+    .markdown-body h1 { font-size:2em; color:#1a1a1a; border:none; font-weight:800; }
+    .markdown-body h2 { font-size:1.5em; color:#1a1a1a; border:none; font-weight:700; }
+    .markdown-body a { color:#0070f3; }
+    .markdown-body blockquote { border-left:4px solid #0070f3; color:#666; background:#f5f5f5; }
+    .markdown-body code { background:#f5f5f5; color:#e00; border:1px solid #eee; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #eee; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #eee; }
+    .markdown-body td { border:1px solid #eee; }
+    .markdown-body hr { border-top:1px solid #eee; }`
+},
+{
+  id: 'book', name: 'Book', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#fffff8', title:'#1a1a1a', body:'#333', code:'#f5f5f0' },
+  css: `.markdown-body { background:#fffff8; color:#333; font-family:'Merriweather',Georgia,serif; padding:56px 72px; max-width:680px; margin:0 auto; line-height:1.9; }
+    .markdown-body h1 { font-size:2em; color:#1a1a1a; border:none; font-weight:700; text-align:center; margin-bottom:1em; }
+    .markdown-body h2 { font-size:1.5em; color:#1a1a1a; border:none; font-weight:600; }
+    .markdown-body h3 { font-size:1.2em; color:#1a1a1a; font-weight:600; }
+    .markdown-body a { color:#1a1a1a; text-decoration:underline; }
+    .markdown-body blockquote { border-left:3px solid #999; color:#666; background:transparent; font-style:italic; margin-left:2em; }
+    .markdown-body code { background:#f5f5f0; color:#333; }
+    .markdown-body pre { background:#f5f5f0; border:1px solid #ddd; }
+    .markdown-body th { background:#f5f5f0; border:1px solid #ddd; }
+    .markdown-body td { border:1px solid #ddd; }
+    .markdown-body hr { border-top:1px solid #ccc; }`
+},
+{
+  id: 'report', name: 'Report', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#ffffff', title:'#003366', body:'#333', code:'#f0f4f8' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:'Arial',Helvetica,sans-serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2em; color:#003366; border:none; border-bottom:3px solid #003366; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.5em; color:#003366; border:none; border-bottom:1px solid #c8d8e8; }
+    .markdown-body h3 { font-size:1.2em; color:#003366; }
+    .markdown-body a { color:#003366; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #003366; color:#555; background:#f0f4f8; }
+    .markdown-body code { background:#f0f4f8; color:#003366; border:1px solid #c8d8e8; }
+    .markdown-body pre { background:#f0f4f8; border:1px solid #c8d8e8; }
+    .markdown-body th { background:#003366; color:#fff; border:1px solid #003366; }
+    .markdown-body td { border:1px solid #c8d8e8; }
+    .markdown-body hr { border-top:2px solid #003366; }`
+},
+{
+  id: 'brochure', name: 'Brochure', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#f8f9fa', title:'#2c3e50', body:'#555', code:'#eef2f7' },
+  css: `.markdown-body { background:#f8f9fa; color:#555; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:2em; color:#2c3e50; border:none; font-weight:300; letter-spacing:-0.5px; }
+    .markdown-body h2 { font-size:1.5em; color:#2c3e50; border:none; font-weight:400; }
+    .markdown-body a { color:#3498db; }
+    .markdown-body blockquote { border-left:4px solid #3498db; color:#777; background:#eef2f7; }
+    .markdown-body code { background:#eef2f7; color:#e74c3c; border:1px solid #dde4ed; }
+    .markdown-body pre { background:#eef2f7; border:1px solid #dde4ed; }
+    .markdown-body th { background:#2c3e50; color:#fff; border:1px solid #2c3e50; }
+    .markdown-body td { border:1px solid #dde4ed; }
+    .markdown-body hr { border-top:1px solid #dde4ed; }`
+},
+{
+  id: 'zine', name: 'Zine', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#f0e8d0', title:'#1a1a1a', body:'#333', code:'#e0d0b0' },
+  css: `.markdown-body { background:#f0e8d0; color:#333; font-family:'Courier New',monospace; padding:40px 48px; border:3px solid #1a1a1a; }
+    .markdown-body h1 { font-size:2.5em; color:#1a1a1a; border:none; border-bottom:4px solid #1a1a1a; padding-bottom:.2em; text-transform:uppercase; letter-spacing:2px; }
+    .markdown-body h2 { font-size:1.6em; color:#1a1a1a; border:none; text-transform:uppercase; }
+    .markdown-body a { color:#1a1a1a; text-decoration:underline; }
+    .markdown-body blockquote { border-left:6px solid #1a1a1a; color:#555; background:#e0d0b0; }
+    .markdown-body code { background:#e0d0b0; color:#1a1a1a; border:2px solid #1a1a1a; }
+    .markdown-body pre { background:#e0d0b0; border:2px solid #1a1a1a; }
+    .markdown-body th { background:#1a1a1a; color:#f0e8d0; border:2px solid #1a1a1a; }
+    .markdown-body td { border:2px solid #1a1a1a; }
+    .markdown-body hr { border-top:4px solid #1a1a1a; }`
+},
+{
+  id: 'manifesto', name: 'Manifesto', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#1a1a1a', title:'#ffffff', body:'#cccccc', code:'#2a2a2a' },
+  css: `.markdown-body { background:#1a1a1a; color:#ccc; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:3em; color:#fff; border:none; font-weight:900; text-transform:uppercase; letter-spacing:-2px; line-height:1.0; }
+    .markdown-body h2 { font-size:1.8em; color:#fff; border:none; font-weight:700; text-transform:uppercase; }
+    .markdown-body h3 { font-size:1.3em; color:#fff; font-weight:700; }
+    .markdown-body a { color:#fff; text-decoration:underline; }
+    .markdown-body blockquote { border-left:6px solid #fff; color:#aaa; background:#2a2a2a; font-size:1.2em; }
+    .markdown-body code { background:#2a2a2a; color:#fff; border:1px solid #444; }
+    .markdown-body pre { background:#2a2a2a; border:1px solid #444; }
+    .markdown-body th { background:#fff; color:#1a1a1a; border:1px solid #fff; }
+    .markdown-body td { border:1px solid #444; }
+    .markdown-body hr { border-top:3px solid #fff; }`
+},
+{
+  id: 'pocket-book', name: 'Pocket Book', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#fdf8f0', title:'#2c2c2c', body:'#4a4a4a', code:'#f0e8d8' },
+  css: `.markdown-body { background:#fdf8f0; color:#4a4a4a; font-family:Georgia,serif; padding:40px 48px; max-width:600px; margin:0 auto; }
+    .markdown-body h1 { font-size:1.8em; color:#2c2c2c; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.4em; color:#2c2c2c; border:none; border-bottom:1px solid #d4c8b0; }
+    .markdown-body a { color:#8b4513; }
+    .markdown-body blockquote { border-left:3px solid #c8a96e; color:#7a6a5a; background:#f0e8d8; font-style:italic; }
+    .markdown-body code { background:#f0e8d8; color:#8b4513; }
+    .markdown-body pre { background:#f0e8d8; border:1px solid #d4c8b0; }
+    .markdown-body th { background:#f0e8d8; border:1px solid #d4c8b0; }
+    .markdown-body td { border:1px solid #d4c8b0; }
+    .markdown-body hr { border-top:1px solid #c8a96e; }`
+},
+{
+  id: 'presentation', name: 'Presentation', category: '📰 出版', tag: 'editorial',
+  preview: { bg:'#1e3a5f', title:'#ffffff', body:'#b0c8e8', code:'#152a4a' },
+  css: `.markdown-body { background:#1e3a5f; color:#b0c8e8; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2.5em; color:#fff; border:none; font-weight:700; text-align:center; }
+    .markdown-body h2 { font-size:1.8em; color:#7ec8e3; border:none; border-bottom:2px solid #7ec8e3; padding-bottom:.3em; }
+    .markdown-body h3 { font-size:1.3em; color:#a8d8ea; }
+    .markdown-body a { color:#7ec8e3; }
+    .markdown-body blockquote { border-left:4px solid #7ec8e3; color:#8090a8; background:#152a4a; }
+    .markdown-body code { background:#152a4a; color:#f0a8c8; border:1px solid #2a4a7a; }
+    .markdown-body pre { background:#152a4a; border:1px solid #2a4a7a; }
+    .markdown-body th { background:#152a4a; color:#fff; border:1px solid #2a4a7a; }
+    .markdown-body td { border:1px solid #2a4a7a; }
+    .markdown-body tr:nth-child(even) td { background:#152a4a; }
+    .markdown-body hr { border-top:2px solid #7ec8e3; }`
+},
+
+/* ── 🎨 色彩主题系 (12) ── */
+{
+  id: 'solarized-light', name: 'Solarized Light', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#fdf6e3', title:'#657b83', body:'#657b83', code:'#eee8d5' },
+  css: `.markdown-body { background:#fdf6e3; color:#657b83; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#586e75; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #eee8d5; padding-bottom:.3em; }
+    .markdown-body a { color:#268bd2; }
+    .markdown-body blockquote { border-left:4px solid #93a1a1; color:#93a1a1; background:#eee8d5; }
+    .markdown-body code { background:#eee8d5; color:#dc322f; border:1px solid #d3cbb8; }
+    .markdown-body pre { background:#eee8d5; border:1px solid #d3cbb8; }
+    .markdown-body th { background:#eee8d5; border:1px solid #d3cbb8; }
+    .markdown-body td { border:1px solid #d3cbb8; }
+    .markdown-body tr:nth-child(even) td { background:#eee8d5; }
+    .markdown-body hr { border-top:1px solid #eee8d5; }
+    .markdown-body strong { color:#b58900; }`
+},
+{
+  id: 'forest', name: 'Forest', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#f0f7f0', title:'#1a4a1a', body:'#2d5a2d', code:'#e0f0e0' },
+  css: `.markdown-body { background:#f0f7f0; color:#2d5a2d; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#1a4a1a; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #b0d8b0; padding-bottom:.3em; }
+    .markdown-body a { color:#2e7d32; }
+    .markdown-body blockquote { border-left:4px solid #4caf50; color:#4a7a4a; background:#e0f0e0; }
+    .markdown-body code { background:#e0f0e0; color:#1b5e20; border:1px solid #b0d8b0; }
+    .markdown-body pre { background:#e0f0e0; border:1px solid #b0d8b0; }
+    .markdown-body th { background:#2e7d32; color:#fff; border:1px solid #2e7d32; }
+    .markdown-body td { border:1px solid #b0d8b0; }
+    .markdown-body hr { border-top:2px solid #4caf50; }`
+},
+{
+  id: 'ocean', name: 'Ocean', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#f0f8ff', title:'#0a3d62', body:'#1a5276', code:'#d6eaf8' },
+  css: `.markdown-body { background:#f0f8ff; color:#1a5276; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#0a3d62; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #aed6f1; padding-bottom:.3em; }
+    .markdown-body a { color:#1565c0; }
+    .markdown-body blockquote { border-left:4px solid #2196f3; color:#2874a6; background:#d6eaf8; }
+    .markdown-body code { background:#d6eaf8; color:#0a3d62; border:1px solid #aed6f1; }
+    .markdown-body pre { background:#d6eaf8; border:1px solid #aed6f1; }
+    .markdown-body th { background:#0a3d62; color:#fff; border:1px solid #0a3d62; }
+    .markdown-body td { border:1px solid #aed6f1; }
+    .markdown-body hr { border-top:2px solid #2196f3; }`
+},
+{
+  id: 'sunset', name: 'Sunset', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#fff8f0', title:'#8b2500', body:'#c0392b', code:'#fde8d8' },
+  css: `.markdown-body { background:#fff8f0; color:#7a3a2a; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#8b2500; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #f0b8a0; padding-bottom:.3em; }
+    .markdown-body a { color:#e74c3c; }
+    .markdown-body blockquote { border-left:4px solid #e74c3c; color:#a04030; background:#fde8d8; }
+    .markdown-body code { background:#fde8d8; color:#8b2500; border:1px solid #f0b8a0; }
+    .markdown-body pre { background:#fde8d8; border:1px solid #f0b8a0; }
+    .markdown-body th { background:#8b2500; color:#fff; border:1px solid #8b2500; }
+    .markdown-body td { border:1px solid #f0b8a0; }
+    .markdown-body hr { border-top:2px solid #e74c3c; }`
+},
+{
+  id: 'lavender', name: 'Lavender', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#f8f0ff', title:'#4a1a7a', body:'#6a3a9a', code:'#ede0ff' },
+  css: `.markdown-body { background:#f8f0ff; color:#6a3a9a; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#4a1a7a; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #d4a8f0; padding-bottom:.3em; }
+    .markdown-body a { color:#7b1fa2; }
+    .markdown-body blockquote { border-left:4px solid #9c27b0; color:#8a5aaa; background:#ede0ff; }
+    .markdown-body code { background:#ede0ff; color:#4a1a7a; border:1px solid #d4a8f0; }
+    .markdown-body pre { background:#ede0ff; border:1px solid #d4a8f0; }
+    .markdown-body th { background:#4a1a7a; color:#fff; border:1px solid #4a1a7a; }
+    .markdown-body td { border:1px solid #d4a8f0; }
+    .markdown-body hr { border-top:2px solid #9c27b0; }`
+},
+{
+  id: 'rose', name: 'Rose', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#fff0f5', title:'#7a0a3a', body:'#9a2a5a', code:'#ffd8e8' },
+  css: `.markdown-body { background:#fff0f5; color:#9a2a5a; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#7a0a3a; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #f0a8c8; padding-bottom:.3em; }
+    .markdown-body a { color:#c2185b; }
+    .markdown-body blockquote { border-left:4px solid #e91e63; color:#aa4a7a; background:#ffd8e8; }
+    .markdown-body code { background:#ffd8e8; color:#7a0a3a; border:1px solid #f0a8c8; }
+    .markdown-body pre { background:#ffd8e8; border:1px solid #f0a8c8; }
+    .markdown-body th { background:#7a0a3a; color:#fff; border:1px solid #7a0a3a; }
+    .markdown-body td { border:1px solid #f0a8c8; }
+    .markdown-body hr { border-top:2px solid #e91e63; }`
+},
+{
+  id: 'midnight-blue', name: 'Midnight Blue', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#0a0a2e', title:'#a0b0e0', body:'#8090c8', code:'#0d0d3a' },
+  css: `.markdown-body { background:#0a0a2e; color:#8090c8; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#a0b0e0; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #1a1a5a; padding-bottom:.3em; }
+    .markdown-body a { color:#6080d0; }
+    .markdown-body blockquote { border-left:4px solid #2a2a7a; color:#6070a8; background:#0d0d3a; }
+    .markdown-body code { background:#0d0d3a; color:#c0d0ff; border:1px solid #2a2a7a; }
+    .markdown-body pre { background:#0d0d3a; border:1px solid #2a2a7a; }
+    .markdown-body th { background:#0d0d3a; color:#a0b0e0; border:1px solid #2a2a7a; }
+    .markdown-body td { border:1px solid #2a2a7a; }
+    .markdown-body tr:nth-child(even) td { background:#0d0d3a; }
+    .markdown-body hr { border-top:1px solid #1a1a5a; }`
+},
+{
+  id: 'emerald', name: 'Emerald', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#f0faf5', title:'#0a4a2a', body:'#1a6a3a', code:'#d0f0e0' },
+  css: `.markdown-body { background:#f0faf5; color:#1a6a3a; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#0a4a2a; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #a0d8b8; padding-bottom:.3em; }
+    .markdown-body a { color:#00897b; }
+    .markdown-body blockquote { border-left:4px solid #00897b; color:#2a8a5a; background:#d0f0e0; }
+    .markdown-body code { background:#d0f0e0; color:#0a4a2a; border:1px solid #a0d8b8; }
+    .markdown-body pre { background:#d0f0e0; border:1px solid #a0d8b8; }
+    .markdown-body th { background:#0a4a2a; color:#fff; border:1px solid #0a4a2a; }
+    .markdown-body td { border:1px solid #a0d8b8; }
+    .markdown-body hr { border-top:2px solid #00897b; }`
+},
+{
+  id: 'amber', name: 'Amber', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#fffbf0', title:'#7a4a00', body:'#9a6a10', code:'#fff0c0' },
+  css: `.markdown-body { background:#fffbf0; color:#9a6a10; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#7a4a00; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #f0c860; padding-bottom:.3em; }
+    .markdown-body a { color:#f57f17; }
+    .markdown-body blockquote { border-left:4px solid #ffa000; color:#aa7a20; background:#fff0c0; }
+    .markdown-body code { background:#fff0c0; color:#7a4a00; border:1px solid #f0c860; }
+    .markdown-body pre { background:#fff0c0; border:1px solid #f0c860; }
+    .markdown-body th { background:#7a4a00; color:#fff; border:1px solid #7a4a00; }
+    .markdown-body td { border:1px solid #f0c860; }
+    .markdown-body hr { border-top:2px solid #ffa000; }`
+},
+{
+  id: 'slate', name: 'Slate', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#f8fafc', title:'#1e293b', body:'#334155', code:'#f1f5f9' },
+  css: `.markdown-body { background:#f8fafc; color:#334155; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#1e293b; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #cbd5e1; padding-bottom:.3em; }
+    .markdown-body a { color:#3b82f6; }
+    .markdown-body blockquote { border-left:4px solid #64748b; color:#64748b; background:#f1f5f9; }
+    .markdown-body code { background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1; }
+    .markdown-body pre { background:#f1f5f9; border:1px solid #cbd5e1; }
+    .markdown-body th { background:#1e293b; color:#fff; border:1px solid #1e293b; }
+    .markdown-body td { border:1px solid #cbd5e1; }
+    .markdown-body hr { border-top:1px solid #cbd5e1; }`
+},
+{
+  id: 'crimson', name: 'Crimson', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#fff5f5', title:'#7b0000', body:'#9b2020', code:'#ffe0e0' },
+  css: `.markdown-body { background:#fff5f5; color:#9b2020; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#7b0000; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #f0a0a0; padding-bottom:.3em; }
+    .markdown-body a { color:#c62828; }
+    .markdown-body blockquote { border-left:4px solid #c62828; color:#aa4040; background:#ffe0e0; }
+    .markdown-body code { background:#ffe0e0; color:#7b0000; border:1px solid #f0a0a0; }
+    .markdown-body pre { background:#ffe0e0; border:1px solid #f0a0a0; }
+    .markdown-body th { background:#7b0000; color:#fff; border:1px solid #7b0000; }
+    .markdown-body td { border:1px solid #f0a0a0; }
+    .markdown-body hr { border-top:2px solid #c62828; }`
+},
+{
+  id: 'monochrome', name: 'Monochrome', category: '🎨 色彩', tag: 'color',
+  preview: { bg:'#f5f5f5', title:'#111', body:'#444', code:'#e0e0e0' },
+  css: `.markdown-body { background:#f5f5f5; color:#444; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#111; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #ccc; padding-bottom:.3em; }
+    .markdown-body a { color:#333; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #999; color:#666; background:#e0e0e0; }
+    .markdown-body code { background:#e0e0e0; color:#111; border:1px solid #ccc; }
+    .markdown-body pre { background:#e0e0e0; border:1px solid #ccc; }
+    .markdown-body th { background:#111; color:#f5f5f5; border:1px solid #111; }
+    .markdown-body td { border:1px solid #ccc; }
+    .markdown-body hr { border-top:2px solid #111; }`
+},
+
+/* ── 🚀 特殊风格系 (12) ── */
+{
+  id: 'wechat-article', name: 'WeChat Article', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#ffffff', title:'#1a1a1a', body:'#3d3d3d', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#3d3d3d; font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; padding:40px 48px; max-width:677px; margin:0 auto; }
+    .markdown-body h1 { font-size:1.6em; color:#1a1a1a; border:none; font-weight:700; text-align:center; }
+    .markdown-body h2 { font-size:1.3em; color:#1a1a1a; border:none; border-left:4px solid #07c160; padding-left:12px; }
+    .markdown-body h3 { font-size:1.1em; color:#1a1a1a; font-weight:600; }
+    .markdown-body a { color:#07c160; }
+    .markdown-body blockquote { border-left:4px solid #07c160; color:#666; background:#f5f5f5; }
+    .markdown-body code { background:#f5f5f5; color:#e74c3c; border-radius:3px; }
+    .markdown-body pre { background:#f5f5f5; border-radius:6px; }
+    .markdown-body th { background:#f5f5f5; border:1px solid #e5e5e5; }
+    .markdown-body td { border:1px solid #e5e5e5; }
+    .markdown-body hr { border-top:1px solid #e5e5e5; }`
+},
+{
+  id: 'zhihu-style', name: 'Zhihu Style', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#ffffff', title:'#1a1a1a', body:'#444', code:'#f6f6f6' },
+  css: `.markdown-body { background:#fff; color:#444; font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif; padding:40px 48px; }
+    .markdown-body h1 { font-size:1.8em; color:#1a1a1a; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.4em; color:#1a1a1a; border:none; font-weight:600; }
+    .markdown-body a { color:#0084ff; }
+    .markdown-body blockquote { border-left:4px solid #0084ff; color:#666; background:#f6f6f6; }
+    .markdown-body code { background:#f6f6f6; color:#e74c3c; border-radius:3px; }
+    .markdown-body pre { background:#f6f6f6; border-radius:6px; }
+    .markdown-body th { background:#f6f6f6; border:1px solid #e5e5e5; }
+    .markdown-body td { border:1px solid #e5e5e5; }
+    .markdown-body hr { border-top:1px solid #e5e5e5; }`
+},
+{
+  id: 'chat-bubble', name: 'Chat Bubble', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#e5ddd5', title:'#075e54', body:'#333', code:'#dcf8c6' },
+  css: `.markdown-body { background:#e5ddd5; color:#333; font-family:-apple-system,BlinkMacSystemFont,sans-serif; padding:20px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#075e54; border:none; }
+    .markdown-body p { background:#fff; border-radius:8px; padding:10px 14px; margin-bottom:8px; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+    .markdown-body a { color:#075e54; }
+    .markdown-body blockquote { border-left:4px solid #075e54; color:#555; background:#fff; border-radius:8px; }
+    .markdown-body code { background:#dcf8c6; color:#075e54; }
+    .markdown-body pre { background:#fff; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,.1); }
+    .markdown-body th { background:#075e54; color:#fff; border:1px solid #075e54; }
+    .markdown-body td { border:1px solid #ddd; background:#fff; }
+    .markdown-body hr { border-top:1px solid #ccc; }`
+},
+{
+  id: 'print-friendly', name: 'Print Friendly', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#ffffff', title:'#000', body:'#000', code:'#f5f5f5' },
+  css: `.markdown-body { background:#fff; color:#000; font-family:'Times New Roman',Times,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:1.8em; color:#000; border:none; border-bottom:2px solid #000; padding-bottom:.2em; }
+    .markdown-body h2 { font-size:1.4em; color:#000; border:none; border-bottom:1px solid #000; }
+    .markdown-body a { color:#000; text-decoration:underline; }
+    .markdown-body blockquote { border-left:3px solid #000; color:#333; background:transparent; }
+    .markdown-body code { background:#f5f5f5; color:#000; border:1px solid #ccc; }
+    .markdown-body pre { background:#f5f5f5; border:1px solid #ccc; }
+    .markdown-body th { background:#000; color:#fff; border:1px solid #000; }
+    .markdown-body td { border:1px solid #000; }
+    .markdown-body hr { border-top:2px solid #000; }`
+},
+{
+  id: 'e-ink', name: 'E-ink', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#f0ece4', title:'#1a1a1a', body:'#2a2a2a', code:'#e0dcd4' },
+  css: `.markdown-body { background:#f0ece4; color:#2a2a2a; font-family:Georgia,serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:1.8em; color:#1a1a1a; border:none; border-bottom:1px solid #aaa; padding-bottom:.3em; }
+    .markdown-body h2 { font-size:1.4em; color:#1a1a1a; border:none; }
+    .markdown-body a { color:#1a1a1a; text-decoration:underline; }
+    .markdown-body blockquote { border-left:3px solid #888; color:#555; background:#e0dcd4; }
+    .markdown-body code { background:#e0dcd4; color:#1a1a1a; border:1px solid #bbb; }
+    .markdown-body pre { background:#e0dcd4; border:1px solid #bbb; }
+    .markdown-body th { background:#e0dcd4; border:1px solid #aaa; }
+    .markdown-body td { border:1px solid #aaa; }
+    .markdown-body hr { border-top:1px solid #aaa; }`
+},
+{
+  id: 'high-contrast', name: 'High Contrast', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#000000', title:'#ffffff', body:'#ffffff', code:'#1a1a1a' },
+  css: `.markdown-body { background:#000; color:#fff; font-family:Arial,sans-serif; padding:40px 48px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#fff; border-color:#fff; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:2px solid #fff; padding-bottom:.3em; }
+    .markdown-body a { color:#ffff00; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #fff; color:#ccc; background:#1a1a1a; }
+    .markdown-body code { background:#1a1a1a; color:#ffff00; border:2px solid #fff; }
+    .markdown-body pre { background:#1a1a1a; border:2px solid #fff; }
+    .markdown-body th { background:#fff; color:#000; border:2px solid #fff; }
+    .markdown-body td { border:2px solid #fff; }
+    .markdown-body hr { border-top:3px solid #fff; }
+    .markdown-body strong { color:#ffff00; }`
+},
+{
+  id: 'night-reading', name: 'Night Reading', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#1a1208', title:'#e8d5a0', body:'#c8b880', code:'#2a1e08' },
+  css: `.markdown-body { background:#1a1208; color:#c8b880; font-family:Georgia,serif; padding:48px 56px; }
+    .markdown-body h1,.markdown-body h2,.markdown-body h3 { color:#e8d5a0; }
+    .markdown-body h1,.markdown-body h2 { border-bottom:1px solid #3a2e10; padding-bottom:.3em; }
+    .markdown-body a { color:#d4a850; }
+    .markdown-body blockquote { border-left:4px solid #d4a850; color:#a09060; background:#2a1e08; }
+    .markdown-body code { background:#2a1e08; color:#d4a850; border:1px solid #3a2e10; }
+    .markdown-body pre { background:#2a1e08; border:1px solid #3a2e10; }
+    .markdown-body th { background:#2a1e08; color:#e8d5a0; border:1px solid #3a2e10; }
+    .markdown-body td { border:1px solid #3a2e10; }
+    .markdown-body tr:nth-child(even) td { background:#2a1e08; }
+    .markdown-body hr { border-top:1px solid #3a2e10; }`
+},
+{
+  id: 'ai-response', name: 'AI Response', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#ffffff', title:'#1a1a1a', body:'#333', code:'#f0f4ff' },
+  css: `.markdown-body { background:#fff; color:#333; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:24px 32px; border-radius:12px; border:1px solid #e5e7eb; }
+    .markdown-body h1 { font-size:1.5em; color:#1a1a1a; border:none; font-weight:700; }
+    .markdown-body h2 { font-size:1.3em; color:#1a1a1a; border:none; font-weight:600; }
+    .markdown-body h3 { font-size:1.1em; color:#1a1a1a; font-weight:600; }
+    .markdown-body a { color:#6366f1; }
+    .markdown-body blockquote { border-left:4px solid #6366f1; color:#666; background:#f0f4ff; border-radius:4px; }
+    .markdown-body code { background:#f0f4ff; color:#6366f1; border:1px solid #e0e7ff; border-radius:4px; }
+    .markdown-body pre { background:#f0f4ff; border:1px solid #e0e7ff; border-radius:8px; }
+    .markdown-body th { background:#f0f4ff; border:1px solid #e0e7ff; }
+    .markdown-body td { border:1px solid #e0e7ff; }
+    .markdown-body hr { border-top:1px solid #e5e7eb; }`
+},
+{
+  id: 'focus-mode', name: 'Focus Mode', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#1a1a1a', title:'#e0e0e0', body:'#b0b0b0', code:'#2a2a2a' },
+  css: `.markdown-body { background:#1a1a1a; color:#b0b0b0; font-family:Georgia,serif; padding:60px 80px; max-width:680px; margin:0 auto; }
+    .markdown-body h1 { font-size:1.8em; color:#e0e0e0; border:none; font-weight:400; }
+    .markdown-body h2 { font-size:1.4em; color:#d0d0d0; border:none; font-weight:400; }
+    .markdown-body h3 { font-size:1.1em; color:#c0c0c0; }
+    .markdown-body a { color:#888; text-decoration:underline; }
+    .markdown-body blockquote { border-left:2px solid #555; color:#888; background:transparent; font-style:italic; }
+    .markdown-body code { background:#2a2a2a; color:#c0c0c0; border:1px solid #444; }
+    .markdown-body pre { background:#2a2a2a; border:1px solid #444; }
+    .markdown-body th { background:#2a2a2a; color:#e0e0e0; border:1px solid #444; }
+    .markdown-body td { border:1px solid #444; }
+    .markdown-body hr { border-top:1px solid #444; }`
+},
+{
+  id: 'twitter-thread', name: 'Twitter Thread', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#ffffff', title:'#0f1419', body:'#536471', code:'#f7f9f9' },
+  css: `.markdown-body { background:#fff; color:#536471; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:20px 24px; max-width:600px; margin:0 auto; }
+    .markdown-body h1 { font-size:1.4em; color:#0f1419; border:none; font-weight:800; }
+    .markdown-body h2 { font-size:1.2em; color:#0f1419; border:none; font-weight:700; }
+    .markdown-body p { border-bottom:1px solid #eff3f4; padding-bottom:16px; margin-bottom:16px; }
+    .markdown-body a { color:#1d9bf0; }
+    .markdown-body blockquote { border-left:4px solid #1d9bf0; color:#536471; background:#f7f9f9; border-radius:4px; }
+    .markdown-body code { background:#f7f9f9; color:#0f1419; border:1px solid #eff3f4; }
+    .markdown-body pre { background:#f7f9f9; border:1px solid #eff3f4; }
+    .markdown-body th { background:#f7f9f9; border:1px solid #eff3f4; }
+    .markdown-body td { border:1px solid #eff3f4; }
+    .markdown-body hr { border-top:1px solid #eff3f4; }`
+},
+{
+  id: 'dyslexia-friendly', name: 'Dyslexia Friendly', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#fffde7', title:'#1a1a1a', body:'#333', code:'#fff9c4' },
+  css: `.markdown-body { background:#fffde7; color:#333; font-family:'OpenDyslexic','Comic Sans MS',cursive; padding:48px 56px; line-height:2; letter-spacing:0.05em; word-spacing:0.1em; }
+    .markdown-body h1 { font-size:1.8em; color:#1a1a1a; border:none; }
+    .markdown-body h2 { font-size:1.4em; color:#1a1a1a; border:none; }
+    .markdown-body a { color:#1565c0; text-decoration:underline; }
+    .markdown-body blockquote { border-left:4px solid #f57f17; color:#555; background:#fff9c4; }
+    .markdown-body code { background:#fff9c4; color:#1a1a1a; border:1px solid #f0e060; }
+    .markdown-body pre { background:#fff9c4; border:1px solid #f0e060; }
+    .markdown-body th { background:#fff9c4; border:1px solid #f0e060; }
+    .markdown-body td { border:1px solid #f0e060; }
+    .markdown-body hr { border-top:2px solid #f57f17; }`
+},
+{
+  id: 'slide-deck', name: 'Slide Deck', category: '🚀 特殊', tag: 'special',
+  preview: { bg:'#2d3561', title:'#ffffff', body:'#c0c8e8', code:'#1a2040' },
+  css: `.markdown-body { background:#2d3561; color:#c0c8e8; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; padding:48px 56px; }
+    .markdown-body h1 { font-size:2.5em; color:#fff; border:none; font-weight:700; text-align:center; }
+    .markdown-body h2 { font-size:1.8em; color:#a0c0ff; border:none; border-bottom:2px solid #a0c0ff; padding-bottom:.3em; }
+    .markdown-body h3 { font-size:1.3em; color:#c0d8ff; }
+    .markdown-body a { color:#a0c0ff; }
+    .markdown-body blockquote { border-left:4px solid #a0c0ff; color:#8090b8; background:#1a2040; }
+    .markdown-body code { background:#1a2040; color:#f0c0a0; border:1px solid #3a4580; }
+    .markdown-body pre { background:#1a2040; border:1px solid #3a4580; }
+    .markdown-body th { background:#1a2040; color:#fff; border:1px solid #3a4580; }
+    .markdown-body td { border:1px solid #3a4580; }
+    .markdown-body tr:nth-child(even) td { background:#1a2040; }
+    .markdown-body hr { border-top:2px solid #a0c0ff; }`
+}
+
+]; // end THEMES
+
+/* ══════════════════════════════════════════════════════
+   DEMO CONTENT
+══════════════════════════════════════════════════════ */
+const DEMO_CONTENT = `# Markdown 渲染器演示
+
+> 这是一个覆盖所有 Markdown 语法的示例文档，切换主题即可实时预览效果。
+
+---
+
+## 1. 标题层级
+
+# H1 一级标题
+## H2 二级标题
+### H3 三级标题
+#### H4 四级标题
+##### H5 五级标题
+###### H6 六级标题
+
+---
+
+## 2. 文字样式
+
+普通文本，**粗体文本**，*斜体文本*，***粗斜体***，~~删除线~~，\`行内代码\`
+
+这是一段较长的正文内容，用于展示主题的正文字体、颜色和行高效果。不同的主题会呈现截然不同的阅读体验，从极简的白色到复古的羊皮纸，从暗黑的 Dracula 到霓虹的 Cyberpunk。
+
+---
+
+## 3. 链接
+
+[这是一个链接](https://example.com)
+
+[带标题的链接](https://example.com "悬停提示")
+
+自动链接：<https://example.com>
+
+---
+
+## 4. 列表
+
+### 无序列表
+
+- 第一项
+- 第二项
+  - 嵌套项 A
+  - 嵌套项 B
+    - 深层嵌套
+- 第三项
+
+### 有序列表
+
+1. 第一步：安装依赖
+2. 第二步：配置环境
+3. 第三步：启动服务
+   1. 子步骤 A
+   2. 子步骤 B
+
+### 任务列表
+
+- [x] 已完成的任务
+- [x] 另一个已完成的任务
+- [ ] 待完成的任务
+- [ ] 还未开始的任务
+
+---
+
+## 5. 引用块
+
+> 这是一段引用文字。引用块通常用于展示他人的话语或重要提示。
+
+> **嵌套引用：**
+>
+> > 这是嵌套的引用内容，可以多层嵌套。
+>
+> 引用可以包含其他 Markdown 元素，比如 **粗体** 和 \`代码\`。
+
+---
+
+## 6. 代码块
+
+### JavaScript
+
+\`\`\`javascript
+// 异步函数示例
+async function fetchData(url) {
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+}
+
+const greet = (name) => \`Hello, \${name}!\`;
+\`\`\`
+
+### Python
+
+\`\`\`python
+# 数据处理示例
+import pandas as pd
+
+def process_data(items):
+    """处理数据并返回 DataFrame"""
+    df = pd.DataFrame(items)
+    df['score'] = df['value'].apply(lambda x: x * 1.5)
+    return df.sort_values('score', ascending=False)
+
+squares = [x**2 for x in range(10) if x % 2 == 0]
+print(f"偶数平方: {squares}")
+\`\`\`
+
+### CSS
+
+\`\`\`css
+/* 玻璃态效果 */
+.glass-card {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+}
+\`\`\`
+
+---
+
+## 7. 表格
+
+| 主题类别 | 数量 | 代表主题 | 适用场景 |
+|---------|------|---------|---------| 
+| ⭐ 经典系 | 12 | GitHub Light/Dark | 通用文档 |
+| 🌑 暗黑系 | 12 | Dracula、Nord | 夜间阅读 |
+| ◻️ 极简系 | 10 | Zen、Ghost | 长文写作 |
+| 📺 复古系 | 10 | Terminal、Retro | 个性展示 |
+| ✨ 创意系 | 14 | Cyberpunk、Vaporwave | 创意内容 |
+| 🎓 学术系 | 10 | LaTeX、IEEE | 学术论文 |
+
+---
+
+## 8. 分割线
+
+---
+
+## 9. 强调组合
+
+这段文字包含多种强调：**重要信息**用粗体，*补充说明*用斜体，~~过时内容~~用删除线，\`关键词\`用代码格式。
+
+---
+
+## 10. 嵌套复杂结构
+
+### 引用中的列表
+
+> **注意事项：**
+>
+> - 确保 Node.js 版本 >= 18
+> - 推荐使用 pnpm 替代 npm
+> - 生产环境请使用 PM2 管理进程
+
+---
+
+## 11. 特殊字符
+
+版权符号：&copy; 2026
+
+HTML 实体：&amp; &lt; &gt; &quot;
+
+---
+
+## 12. 长段落阅读测试
+
+这是一段较长的正文段落，专门用于测试不同主题下的阅读体验。好的排版应该让读者感到舒适，字体大小适中，行高充足，段落间距合理。不同的主题在这方面有着截然不同的设计哲学：极简主义追求留白与克制，学术风格注重严谨与规范，创意风格则大胆突破传统。
+
+无论选择哪种主题，核心目标都是让内容清晰可读，让读者专注于文字本身，而不是被过度的视觉装饰所干扰。这正是 Markdown 的设计哲学——内容优先，格式服务于内容。
+
+---
+
+*文档结束 · 共覆盖 12 种 Markdown 语法类型 · 112 个主题*
+`;
+
+/* ══════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════ */
+let currentThemeId = 'github-light';
+
+/* ══════════════════════════════════════════════════════
+   DOM REFS
+══════════════════════════════════════════════════════ */
+const editor        = document.getElementById('editor');
+const preview       = document.getElementById('preview');
+const fsContent     = document.getElementById('fsContent');
+const themePanel    = document.getElementById('themePanel');
+const themeList     = document.getElementById('themeList');
+const themeSearch   = document.getElementById('themeSearch');
+const toast         = document.getElementById('toast');
+
+/* ══════════════════════════════════════════════════════
+   MARKED CONFIG
+══════════════════════════════════════════════════════ */
+marked.use({
+  breaks: true,
+  gfm: true,
+});
+
+/* ══════════════════════════════════════════════════════
+   RENDER
+══════════════════════════════════════════════════════ */
+function render() {
+  const md = editor.value;
+  const html = marked.parse(md);
+  preview.innerHTML = html;
+  fsContent.innerHTML = html;
+  updateStats(md);
+  preview.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+  fsContent.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+}
+
+function updateStats(md) {
+  const text = md.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '').replace(/[#*_~\[\]()>-]/g, '').trim();
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const chars = md.length;
+  const readMin = Math.max(1, Math.round(words / 300));
+  document.getElementById('wordCount').textContent = words + ' 字';
+  document.getElementById('charCount').textContent = chars + ' 字符';
+  document.getElementById('readTime').textContent = readMin + ' 分钟阅读';
+}
+
+/* ══════════════════════════════════════════════════════
+   THEME PANEL
+══════════════════════════════════════════════════════ */
+function buildThemePanel(filter = '') {
+  const lf = filter.toLowerCase();
+  const groups = {};
+  THEMES.forEach(t => {
+    if (lf && !t.name.toLowerCase().includes(lf) && !t.category.toLowerCase().includes(lf) && !t.tag.toLowerCase().includes(lf)) return;
+    if (!groups[t.category]) groups[t.category] = [];
+    groups[t.category].push(t);
+  });
+
+  themeList.innerHTML = '';
+  Object.entries(groups).forEach(([cat, themes]) => {
+    const group = document.createElement('div');
+    group.className = 'theme-category-group';
+
+    const label = document.createElement('div');
+    label.className = 'theme-cat-label';
+    const parts = cat.split(' ');
+    label.innerHTML = `<span>${parts[0]}</span>${parts.slice(1).join(' ')} <span style="margin-left:auto;font-size:11px;color:#555">${themes.length}</span>`;
+    group.appendChild(label);
+
+    themes.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'theme-item' + (t.id === currentThemeId ? ' active' : '');
+      item.dataset.id = t.id;
+
+      const card = document.createElement('div');
+      card.className = 'theme-preview-card';
+      card.style.background = t.preview.bg;
+      card.innerHTML = `
+        <div class="tpc-line title" style="background:${t.preview.title}"></div>
+        <div class="tpc-line body" style="background:${t.preview.body}"></div>
+        <div class="tpc-line body2" style="background:${t.preview.body}"></div>
+        <div class="tpc-line code" style="background:${t.preview.code}"></div>
+      `;
+
+      const info = document.createElement('div');
+      info.className = 'theme-item-info';
+      info.innerHTML = `<div class="theme-item-name">${t.name}</div><div class="theme-item-tag">${t.tag}</div>`;
+
+      item.appendChild(card);
+      item.appendChild(info);
+      item.addEventListener('click', () => applyTheme(t.id));
+      group.appendChild(item);
+    });
+
+    themeList.appendChild(group);
+  });
+}
+
+function applyTheme(id) {
+  const t = THEMES.find(x => x.id === id);
+  if (!t) return;
+  currentThemeId = id;
+
+  const old = document.getElementById('active-theme-style');
+  if (old) old.remove();
+
+  const style = document.createElement('style');
+  style.id = 'active-theme-style';
+  style.textContent = t.css;
+  document.head.appendChild(style);
+
+  document.querySelectorAll('.theme-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === id);
+  });
+
+  // scroll active item into view
+  const activeEl = themeList.querySelector('.theme-item.active');
+  if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+}
+
+/* ══════════════════════════════════════════════════════
+   CONTROLS
+══════════════════════════════════════════════════════ */
+function applyControls() {
+  const fs  = document.getElementById('fontSize').value;
+  const lh  = document.getElementById('lineHeight').value;
+  const cw  = document.getElementById('contentWidth').value;
+  const cnF = document.getElementById('cnFont').value;
+  const enF = document.getElementById('enFont').value;
+
+  document.getElementById('fontSizeVal').textContent = fs + 'px';
+  document.getElementById('lineHeightVal').textContent = (lh / 10).toFixed(1);
+
+  [preview, fsContent].forEach(el => {
+    el.style.fontSize = fs + 'px';
+    el.style.lineHeight = (lh / 10).toFixed(1);
+    el.style.setProperty('--cn-font', cnF);
+    el.style.setProperty('--en-font', enF);
+  });
+
+  const previewContent = document.querySelector('.preview-content');
+  if (previewContent) previewContent.style.width = cw;
+  const fsContentEl = document.querySelector('.fs-content');
+  if (fsContentEl) fsContentEl.style.width = cw;
+}
+
+/* ══════════════════════════════════════════════════════
+   CODE THEME
+══════════════════════════════════════════════════════ */
+function applyCodeTheme(theme) {
+  const link = document.getElementById('hljs-theme');
+  link.href = `https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/${theme}.min.css`;
+  setTimeout(() => {
+    preview.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+  }, 150);
+}
+
+/* ══════════════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════════════ */
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+/* ══════════════════════════════════════════════════════
+   EXPORT
+══════════════════════════════════════════════════════ */
+async function renderExportCanvas(targetWidth = 1920) {
+  const source = preview;
+  const rect = source.getBoundingClientRect();
+  const contentWidth = Math.max(Math.ceil(rect.width), Math.ceil(source.clientWidth), 1);
+  const contentHeight = Math.max(Math.ceil(source.scrollHeight), Math.ceil(source.clientHeight), 1);
+  const scale = Math.max(targetWidth / contentWidth, 1);
+
+  const exportShell = document.createElement('div');
+  exportShell.style.cssText = [
+    'position:fixed',
+    'left:-99999px',
+    'top:0',
+    `width:${contentWidth}px`,
+    'padding:0',
+    'margin:0',
+    'background:#ffffff',
+    'overflow:visible',
+    'z-index:-1'
+  ].join(';');
+
+  const exportNode = source.cloneNode(true);
+  exportNode.style.width = `${contentWidth}px`;
+  exportNode.style.maxWidth = `${contentWidth}px`;
+  exportNode.style.height = 'auto';
+  exportNode.style.overflow = 'visible';
+  exportNode.style.margin = '0';
+
+  exportShell.appendChild(exportNode);
+  document.body.appendChild(exportShell);
+
+  try {
+    return await html2canvas(exportNode, {
+      scale,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: contentWidth,
+      windowHeight: contentHeight,
+      width: contentWidth,
+      height: contentHeight,
+    });
+  } finally {
+    exportShell.remove();
+  }
+}
+
+async function exportImage() {
+  const overlay = document.createElement('div');
+  overlay.className = 'loading-overlay';
+  overlay.innerHTML = '<div class="loading-spinner"></div><div>正在导出 1920 宽高清长图…</div>';
+  document.body.appendChild(overlay);
+
+  try {
+    const canvas = await renderExportCanvas(1920);
+    const link = document.createElement('a');
+    link.download = 'markdown-export-1920w.png';
+    link.href = canvas.toDataURL('image/png', 1.0);
+    link.click();
+    showToast('✅ 已导出 1920 宽高清 PNG！');
+  } catch (err) {
+    showToast('❌ 导出失败：' + err.message);
+  } finally {
+    overlay.remove();
+  }
+}
+
+async function exportPdf() {
+  const overlay = document.createElement('div');
+  overlay.className = 'loading-overlay';
+  overlay.innerHTML = '<div class="loading-spinner"></div><div>正在生成高清 PDF…</div>';
+  document.body.appendChild(overlay);
+
+  try {
+    const canvas = await renderExportCanvas(1920);
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({
+      orientation: 'p',
+      unit: 'pt',
+      format: 'a4',
+      compress: true,
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 24;
+    const usableWidth = pageWidth - margin * 2;
+    const usableHeight = pageHeight - margin * 2;
+
+    const imgWidth = canvas.width;
+    const imgHeight = canvas.height;
+    const pagePixelHeight = Math.floor((usableHeight * imgWidth) / usableWidth);
+
+    let renderedHeight = 0;
+    let pageIndex = 0;
+
+    while (renderedHeight < imgHeight) {
+      const sliceHeight = Math.min(pagePixelHeight, imgHeight - renderedHeight);
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = imgWidth;
+      pageCanvas.height = sliceHeight;
+      pageCanvas.getContext('2d').drawImage(
+        canvas,
+        0, renderedHeight, imgWidth, sliceHeight,
+        0, 0, imgWidth, sliceHeight
+      );
+
+      const sliceData = pageCanvas.toDataURL('image/png', 1.0);
+      const renderHeightPt = (sliceHeight * usableWidth) / imgWidth;
+
+      if (pageIndex > 0) pdf.addPage();
+      pdf.addImage(sliceData, 'PNG', margin, margin, usableWidth, renderHeightPt, undefined, 'FAST');
+
+      renderedHeight += sliceHeight;
+      pageIndex += 1;
+    }
+
+    pdf.save('markdown-export.pdf');
+    showToast('✅ PDF 已直接导出！');
+  } catch (err) {
+    showToast('❌ PDF 导出失败：' + err.message);
+  } finally {
+    overlay.remove();
+  }
+}
+
+function copyHtml() {
+  const html = preview.innerHTML;
+  const themeStyle = document.getElementById('active-theme-style');
+  const css = themeStyle ? themeStyle.textContent : '';
+  const full = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; padding: 40px; }
+    .markdown-body { max-width: 800px; margin: 0 auto; }
+    ${css}
+  </style></head><body><div class="markdown-body">${html}</div></body></html>`;
+
+  navigator.clipboard.writeText(full).then(() => {
+    showToast('✅ HTML 已复制到剪贴板！');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = full;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    showToast('✅ HTML 已复制！');
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   EVENT LISTENERS
+══════════════════════════════════════════════════════ */
+// Editor
+editor.addEventListener('input', render);
+
+// Theme panel toggle
+document.getElementById('toggleThemePanel').addEventListener('click', () => {
+  themePanel.classList.toggle('collapsed');
+});
+document.getElementById('closeThemePanel').addEventListener('click', () => {
+  themePanel.classList.add('collapsed');
+});
+
+// Theme search
+themeSearch.addEventListener('input', e => buildThemePanel(e.target.value));
+
+// Controls
+['fontSize','lineHeight','contentWidth','cnFont','enFont'].forEach(id => {
+  document.getElementById(id).addEventListener('input', applyControls);
+  document.getElementById(id).addEventListener('change', applyControls);
+});
+
+// Code theme
+document.getElementById('codeTheme').addEventListener('change', e => applyCodeTheme(e.target.value));
+
+// Editor buttons
+document.getElementById('clearEditor').addEventListener('click', () => {
+  editor.value = '';
+  render();
+});
+document.getElementById('loadDemo').addEventListener('click', () => {
+  editor.value = DEMO_CONTENT;
+  render();
+});
+
+// Fullscreen
+document.getElementById('toggleFullscreen').addEventListener('click', () => {
+  document.getElementById('fullscreenOverlay').classList.add('active');
+});
+document.getElementById('closeFullscreen').addEventListener('click', () => {
+  document.getElementById('fullscreenOverlay').classList.remove('active');
+});
+
+// Export
+document.getElementById('exportImg').addEventListener('click', exportImage);
+document.getElementById('exportPdf').addEventListener('click', exportPdf);
+document.getElementById('copyHtml').addEventListener('click', copyHtml);
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.getElementById('fullscreenOverlay').classList.remove('active');
+  }
+});
+
+/* ══════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════ */
+buildThemePanel();
+applyTheme('github-light');
+editor.value = DEMO_CONTENT;
+render();
+applyControls();
+</script>
+</body>
+</html>
